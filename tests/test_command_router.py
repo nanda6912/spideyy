@@ -1,0 +1,104 @@
+import unittest
+from pathlib import Path
+from unittest.mock import Mock
+
+from core.command_router import CommandRouter, normalize_command
+from core.models import CommandResult
+from core.state import AssistantState, StateManager
+from system.application_discovery import DiscoveredApplication
+from system.monitor_manager import MonitorInfo
+from system.window_manager import WindowInfo
+
+
+class CommandRouterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.application = DiscoveredApplication.create(
+            "Google Chrome", Path("chrome.exe"), source="test"
+        )
+        self.registry = Mock()
+        self.registry.match.return_value = self.application
+        self.registry.load_all.return_value = [self.application]
+        self.launcher = Mock()
+        self.launcher.launch.return_value = CommandResult.ok("Launching Google Chrome.")
+        self.monitors = Mock()
+        self.monitors.monitor_count.return_value = 2
+        self.monitors.describe_monitors.return_value = "Monitor 1: Laptop, 1536x864, Primary"
+        self.monitors.get_monitor.side_effect = lambda index: (
+            MonitorInfo(index, "Display", 0, 0, 100, 100, index == 1, 0, 0, 100, 100)
+            if index in {1, 2}
+            else None
+        )
+        self.windows = Mock()
+        self.window = WindowInfo(10, "Google Chrome", 101, "chrome.exe", 0, 0, 800, 600)
+        self.windows.find_window.return_value = self.window
+        self.windows.maximize_window.return_value = CommandResult.ok("Window maximized.")
+        self.windows.minimize_window.return_value = CommandResult.ok("Window minimized.")
+        self.windows.restore_window.return_value = CommandResult.ok("Window restored.")
+        self.windows.move_window_to_monitor.return_value = CommandResult.ok("Window moved.")
+        self.state = StateManager(AssistantState.LISTENING)
+        self.router = CommandRouter(self.registry, self.launcher, self.monitors, self.windows, self.state)
+
+    def test_normalizes_text_and_routes_application_commands(self) -> None:
+        self.assertEqual(normalize_command("  OPEN   Chrome  "), "open chrome")
+        for command in (
+            "open chrome",
+            "open google chrome",
+            "open vscode",
+            "open vs code",
+            "open visual studio code",
+            "open intellij",
+            "open idea",
+            "launch terminal",
+            "launch windows terminal",
+            "start eclipse",
+        ):
+            with self.subTest(command=command):
+                result = self.router.route(command)
+                self.assertTrue(result.success)
+        self.assertEqual(self.launcher.launch.call_count, 10)
+
+    def test_routes_monitor_commands(self) -> None:
+        self.assertTrue(self.router.route("show monitors").success)
+        self.assertTrue(self.router.route("list monitors").success)
+        count = self.router.route("how many monitors")
+        self.assertEqual(count.data["monitor_count"], 2)
+
+    def test_routes_window_actions_and_alias_lookup(self) -> None:
+        for command, method in (
+            ("maximize chrome", self.windows.maximize_window),
+            ("minimize google chrome", self.windows.minimize_window),
+            ("restore chrome", self.windows.restore_window),
+        ):
+            with self.subTest(command=command):
+                self.assertTrue(self.router.route(command).success)
+                method.assert_called_with(self.window)
+
+    def test_routes_move_commands_and_validates_monitor(self) -> None:
+        for command, index in (
+            ("move chrome to monitor 2", 2),
+            ("move intellij to monitor 2", 2),
+            ("move vscode to monitor 1", 1),
+        ):
+            with self.subTest(command=command):
+                result = self.router.route(command)
+                self.assertTrue(result.success)
+                self.windows.move_window_to_monitor.assert_called_with(self.window, index)
+        invalid = self.router.route("move chrome to monitor 9")
+        self.assertEqual(invalid.error_code, "monitor_not_found")
+
+    def test_handles_help_status_unknown_application_and_missing_window(self) -> None:
+        self.assertTrue(self.router.route("help").success)
+        self.assertTrue(self.router.route("what can you do").success)
+        self.assertEqual(self.router.route("jarvis status").data["state"], "listening")
+        self.assertEqual(self.router.route("dance now").error_code, "unknown_command")
+        self.registry.match.return_value = None
+        self.assertEqual(self.router.route("maximize unknown").error_code, "application_not_found")
+        self.registry.match.return_value = self.application
+        self.windows.find_window.return_value = None
+        self.assertEqual(self.router.route("restore chrome").error_code, "window_not_found")
+
+    def test_propagates_failed_operations(self) -> None:
+        self.launcher.launch.return_value = CommandResult.failure("application_launch_failed", "Launch failed.")
+        self.assertEqual(self.router.route("open chrome").error_code, "application_launch_failed")
+        self.windows.maximize_window.return_value = CommandResult.failure("window_maximized_failed", "Failed.")
+        self.assertEqual(self.router.route("maximize chrome").error_code, "window_maximized_failed")
