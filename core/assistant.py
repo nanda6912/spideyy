@@ -10,6 +10,7 @@ from system.application_discovery import ApplicationRegistry
 from system.application_launcher import ApplicationLauncher
 from system.application_registry_service import ApplicationRegistryService
 from system.monitor_manager import MonitorManager
+from system.system_information import SystemInformationService
 from system.window_manager import WindowManager
 
 
@@ -24,6 +25,7 @@ class JarvisAssistant:
         window_manager: WindowManager | None = None,
         launcher: ApplicationLauncher | None = None,
         state_manager: StateManager | None = None,
+        system_info_service: SystemInformationService | None = None,
     ) -> None:
         self.registry = registry or ApplicationRegistry()
         self.state_manager = state_manager or StateManager()
@@ -35,6 +37,9 @@ class JarvisAssistant:
         self.registry_service = (
             registry_service or ApplicationRegistryService(self.registry)
         )
+        self.system_info_service = (
+            system_info_service or SystemInformationService()
+        )
 
         self.router = CommandRouter(
             self.registry,
@@ -43,7 +48,9 @@ class JarvisAssistant:
             self.window_manager,
             self.state_manager,
             self.registry_service,
+            system_info_service=self.system_info_service,
         )
+
 
     def startup(self) -> CommandResult:
         """Ensure application discovery has populated the persistent registry."""

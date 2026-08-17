@@ -102,3 +102,40 @@ class CommandRouterTests(unittest.TestCase):
         self.assertEqual(self.router.route("open chrome").error_code, "application_launch_failed")
         self.windows.maximize_window.return_value = CommandResult.failure("window_maximized_failed", "Failed.")
         self.assertEqual(self.router.route("maximize chrome").error_code, "window_maximized_failed")
+
+    def test_routes_system_information_commands(self) -> None:
+        sys_info = Mock()
+        sys_info.get_cpu_usage.return_value = CommandResult.ok("CPU 20 percent.")
+        sys_info.get_memory_usage.return_value = CommandResult.ok("Memory 50 percent.")
+        sys_info.get_disk_usage.return_value = CommandResult.ok("Disk 40 percent.")
+        sys_info.get_battery_status.return_value = CommandResult.ok("Battery 90 percent.")
+        sys_info.get_current_time.return_value = CommandResult.ok("It is 10:00 AM.")
+        sys_info.get_system_status.return_value = CommandResult.ok("System status summary.")
+
+        router = CommandRouter(
+            self.registry,
+            self.launcher,
+            self.monitors,
+            self.windows,
+            self.state,
+            system_info_service=sys_info,
+        )
+
+        self.assertEqual(router.route("cpu usage").message, "CPU 20 percent.")
+        sys_info.get_cpu_usage.assert_called_once()
+
+        self.assertEqual(router.route("memory usage").message, "Memory 50 percent.")
+        sys_info.get_memory_usage.assert_called_once()
+
+        self.assertEqual(router.route("disk usage").message, "Disk 40 percent.")
+        sys_info.get_disk_usage.assert_called_once()
+
+        self.assertEqual(router.route("battery status").message, "Battery 90 percent.")
+        sys_info.get_battery_status.assert_called_once()
+
+        self.assertEqual(router.route("what time is it").message, "It is 10:00 AM.")
+        sys_info.get_current_time.assert_called_once()
+
+        self.assertEqual(router.route("system status").message, "System status summary.")
+        sys_info.get_system_status.assert_called_once()
+

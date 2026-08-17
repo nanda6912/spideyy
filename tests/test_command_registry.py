@@ -160,6 +160,47 @@ class CommandRegistryTests(unittest.TestCase):
             self.assertIn(item, phrases)
         self.assertNotIn("move chrome to monitor 2", phrases)
 
+    def test_18_cpu_command_intents(self) -> None:
+        for phrase in ("cpu usage", "cpu status", "processor usage"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_cpu_usage")
+
+    def test_19_memory_command_intents(self) -> None:
+        for phrase in ("memory usage", "ram usage", "memory status"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_memory_usage")
+
+    def test_20_disk_command_intents(self) -> None:
+        for phrase in ("disk usage", "disk status", "storage status"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_disk_usage")
+
+    def test_21_battery_command_intents(self) -> None:
+        for phrase in ("battery status", "battery level"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_battery_status")
+
+    def test_22_time_command_intents(self) -> None:
+        for phrase in ("what time is it", "current time", "time"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_current_time")
+
+    def test_23_system_status_command_intent(self) -> None:
+        intent = self.registry.match("system status")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "get_system_status")
+
 
 if __name__ == "__main__":
     unittest.main()
+

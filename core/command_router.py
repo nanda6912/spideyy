@@ -11,6 +11,7 @@ from system.application_discovery import ApplicationRegistry, DiscoveredApplicat
 from system.application_launcher import ApplicationLauncher
 from system.application_registry_service import ApplicationRegistryService
 from system.monitor_manager import MonitorManager
+from system.system_information import SystemInformationService
 from system.window_manager import WindowInfo, WindowManager
 
 
@@ -31,6 +32,7 @@ class CommandRouter:
         state_manager: StateManager,
         registry_service: ApplicationRegistryService | None = None,
         command_registry: CommandRegistry | None = None,
+        system_info_service: SystemInformationService | None = None,
     ) -> None:
         self._registry = registry
         self._launcher = launcher
@@ -39,6 +41,7 @@ class CommandRouter:
         self._state_manager = state_manager
         self._registry_service = registry_service
         self._command_registry = command_registry or get_default_command_registry()
+        self._system_info_service = system_info_service or SystemInformationService()
 
     def route(self, command: str) -> CommandResult:
         """Return a structured result for one supported, normalized command."""
@@ -81,6 +84,24 @@ class CommandRouter:
         if intent.name == "refresh_applications":
             if self._registry_service is not None:
                 return self._registry_service.refresh()
+
+        if intent.name == "get_cpu_usage":
+            return self._system_info_service.get_cpu_usage()
+
+        if intent.name == "get_memory_usage":
+            return self._system_info_service.get_memory_usage()
+
+        if intent.name == "get_disk_usage":
+            return self._system_info_service.get_disk_usage()
+
+        if intent.name == "get_battery_status":
+            return self._system_info_service.get_battery_status()
+
+        if intent.name == "get_current_time":
+            return self._system_info_service.get_current_time()
+
+        if intent.name == "get_system_status":
+            return self._system_info_service.get_system_status()
 
         if intent.name == "launch_application":
             if not intent.target:

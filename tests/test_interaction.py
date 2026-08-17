@@ -170,3 +170,19 @@ def test_stop_resets_mode():
     interaction.stop()
 
     assert interaction.mode == "wake"
+
+
+def test_system_information_voice_command_is_spoken_and_returns_to_wake():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    assistant.handle_voice_command.return_value = (
+        CommandResult.ok("CPU usage is 18 percent.")
+    )
+
+    interaction._mode = "command"
+    interaction._process_text("cpu usage")
+
+    assistant.handle_voice_command.assert_called_once_with("cpu usage")
+    interaction._tts.speak.assert_called_once_with("CPU usage is 18 percent.")
+    assert interaction.mode == "wake"

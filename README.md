@@ -129,6 +129,13 @@ Implemented commands include:
 - `open <application>`, `launch <application>`, and `start <application>`
 - `maximize <application>`, `minimize <application>`, and `restore <application>`
 - `move <application> to monitor <number>`
+- `cpu usage`, `cpu status`, and `processor usage`
+- `memory usage`, `ram usage`, and `memory status`
+- `disk usage`, `disk status`, and `storage status`
+- `battery status` and `battery level`
+- `what time is it`, `current time`, and `time`
+- `system status`
+
 
 Application names and aliases come from the local registry. Monitor numbers in
 the command grammar are restricted to monitors currently detected by Windows.

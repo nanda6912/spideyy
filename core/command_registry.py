@@ -215,5 +215,48 @@ def get_default_command_registry() -> CommandRegistry:
             matcher=_match_move_window,
         )
     )
+    registry.register(
+        CommandDefinition(
+            name="get_cpu_usage",
+            patterns=("cpu usage", "cpu status", "processor usage"),
+            description="Report current CPU usage percentage",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_memory_usage",
+            patterns=("memory usage", "ram usage", "memory status"),
+            description="Report current RAM usage and available memory",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_disk_usage",
+            patterns=("disk usage", "disk status", "storage status"),
+            description="Report system drive disk usage and available space",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_battery_status",
+            patterns=("battery status", "battery level"),
+            description="Report battery percentage and charging state",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_current_time",
+            patterns=("what time is it", "current time", "time"),
+            description="Report current local system time",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_system_status",
+            patterns=("system status",),
+            description="Report combined system status metrics",
+        )
+    )
 
     return registry
+
