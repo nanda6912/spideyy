@@ -203,3 +203,31 @@ def test_system_control_voice_command_is_spoken_and_returns_to_wake():
     interaction._tts.speak.assert_called_once_with("Volume is at 50 percent.")
     assert interaction.mode == "wake"
 
+
+def test_power_command_voice_confirmation_flow():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    assistant.handle_voice_command.side_effect = [
+        CommandResult.ok(
+            "Are you sure you want to shut down the computer?",
+            pending_confirmation="shutdown_computer",
+            requires_confirmation=True,
+        ),
+        CommandResult.ok("Shutdown cancelled."),
+    ]
+
+    interaction._mode = "command"
+    interaction._process_text("shutdown computer")
+
+    assistant.handle_voice_command.assert_called_with("shutdown computer")
+    interaction._tts.speak.assert_called_with("Are you sure you want to shut down the computer?")
+
+    interaction._mode = "command"
+    interaction._process_text("no")
+
+    assistant.handle_voice_command.assert_called_with("no")
+    interaction._tts.speak.assert_called_with("Shutdown cancelled.")
+    assert interaction.mode == "wake"
+
+

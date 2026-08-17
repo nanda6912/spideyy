@@ -3,8 +3,10 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from core.command_router import CommandRouter, normalize_command
+from core.confirmation import ConfirmationManager
 from core.models import CommandResult
 from core.state import AssistantState, StateManager
+
 from system.application_discovery import DiscoveredApplication
 from system.monitor_manager import MonitorInfo
 from system.window_manager import WindowInfo
@@ -181,5 +183,69 @@ class CommandRouterTests(unittest.TestCase):
 
         self.assertEqual(router.route("lock computer").message, "Computer locked.")
         sys_control.lock_computer.assert_called_once()
+
+    def test_routes_power_commands_with_confirmation(self) -> None:
+        power_service = Mock()
+        power_service.shutdown_computer.return_value = CommandResult.ok("Shutting down.")
+        power_service.restart_computer.return_value = CommandResult.ok("Restarting.")
+        power_service.sleep_computer.return_value = CommandResult.ok("Putting the computer to sleep.")
+
+        current_time = 1000.0
+        confirmation_manager = ConfirmationManager(
+            default_timeout=10.0,
+            time_provider=lambda: current_time,
+        )
+
+        router = CommandRouter(
+            self.registry,
+            self.launcher,
+            self.monitors,
+            self.windows,
+            self.state,
+            power_service=power_service,
+            confirmation_manager=confirmation_manager,
+        )
+
+        # 1. Shutdown request -> confirmation prompt
+        res1 = router.route("shutdown computer")
+        self.assertTrue(res1.success)
+        self.assertEqual(res1.message, "Are you sure you want to shut down the computer?")
+        self.assertEqual(res1.data.get("pending_confirmation"), "shutdown_computer")
+        power_service.shutdown_computer.assert_not_called()
+
+        # 2. Confirm shutdown -> executes shutdown
+        res2 = router.route("yes")
+        self.assertTrue(res2.success)
+        self.assertEqual(res2.message, "Shutting down.")
+        power_service.shutdown_computer.assert_called_once()
+
+        # 3. 'yes' with no pending confirmation -> does not execute
+        res3 = router.route("yes")
+        self.assertFalse(res3.success)
+        self.assertEqual(res3.error_code, "no_pending_confirmation")
+
+        # 4. Restart request -> cancel -> does not execute
+        router.route("restart computer")
+        res_cancel = router.route("no")
+        self.assertTrue(res_cancel.success)
+        self.assertEqual(res_cancel.message, "Restart cancelled.")
+        power_service.restart_computer.assert_not_called()
+
+        # 5. Sleep request -> expiration
+        router.route("sleep computer")
+        current_time = 1015.0  # 15s > 10s timeout
+        res_expired = router.route("confirm")
+        self.assertFalse(res_expired.success)
+        self.assertEqual(res_expired.error_code, "confirmation_expired")
+        power_service.sleep_computer.assert_not_called()
+
+        # 6. Action replacement: shutdown request -> restart request -> confirm restart
+        router.route("shutdown computer")
+        res_rep = router.route("restart computer")
+        self.assertEqual(res_rep.message, "Are you sure you want to restart the computer?")
+        res_conf = router.route("confirmed")
+        self.assertEqual(res_conf.message, "Restarting.")
+        power_service.restart_computer.assert_called_once()
+
 
 

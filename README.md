@@ -139,6 +139,15 @@ Implemented commands include:
 - `volume up` and `volume down`
 - `set volume to <number>`
 - `lock computer` and `lock workstation`
+- `shutdown computer` (requires confirmation: `yes` / `no` within 10s)
+- `restart computer` (requires confirmation: `yes` / `no` within 10s)
+- `sleep computer` (requires confirmation: `yes` / `no` within 10s)
+
+Confirmation & Cancellation:
+- Positive confirmation: `yes`, `confirm`, `confirmed`
+- Negative confirmation: `no`, `cancel`, `cancel it`, `abort`
+- Expiration: Pending confirmations automatically expire after 10 seconds.
+
 
 
 

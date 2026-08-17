@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from core.command_registry import CommandRegistry, get_default_command_registry
+from core.confirmation import ConfirmationManager
 from core.models import CommandIntent, CommandResult
 from core.state import StateManager
 from system.application_discovery import ApplicationRegistry, DiscoveredApplication
@@ -13,6 +14,7 @@ from system.application_registry_service import ApplicationRegistryService
 from system.monitor_manager import MonitorManager
 from system.system_control import SystemControlService
 from system.system_information import SystemInformationService
+from system.system_power import SystemPowerService
 from system.window_manager import WindowInfo, WindowManager
 
 
@@ -35,6 +37,8 @@ class CommandRouter:
         command_registry: CommandRegistry | None = None,
         system_info_service: SystemInformationService | None = None,
         system_control_service: SystemControlService | None = None,
+        power_service: SystemPowerService | None = None,
+        confirmation_manager: ConfirmationManager | None = None,
     ) -> None:
         self._registry = registry
         self._launcher = launcher
@@ -45,6 +49,8 @@ class CommandRouter:
         self._command_registry = command_registry or get_default_command_registry()
         self._system_info_service = system_info_service or SystemInformationService()
         self._system_control_service = system_control_service or SystemControlService()
+        self._power_service = power_service or SystemPowerService()
+        self._confirmation_manager = confirmation_manager or ConfirmationManager()
 
     def route(self, command: str) -> CommandResult:
         """Return a structured result for one supported, normalized command."""
@@ -124,6 +130,66 @@ class CommandRouter:
 
         if intent.name == "lock_computer":
             return self._system_control_service.lock_computer()
+
+        if intent.name == "shutdown_computer":
+            self._confirmation_manager.create("shutdown_computer", description="shut down the computer")
+            return CommandResult.ok(
+                "Are you sure you want to shut down the computer?",
+                pending_confirmation="shutdown_computer",
+                requires_confirmation=True,
+            )
+
+        if intent.name == "restart_computer":
+            self._confirmation_manager.create("restart_computer", description="restart the computer")
+            return CommandResult.ok(
+                "Are you sure you want to restart the computer?",
+                pending_confirmation="restart_computer",
+                requires_confirmation=True,
+            )
+
+        if intent.name == "sleep_computer":
+            self._confirmation_manager.create("sleep_computer", description="put the computer to sleep")
+            return CommandResult.ok(
+                "Are you sure you want to put the computer to sleep?",
+                pending_confirmation="sleep_computer",
+                requires_confirmation=True,
+            )
+
+        if intent.name == "confirm_action":
+            pending = self._confirmation_manager.pending
+            if pending is None:
+                expired = self._confirmation_manager.pop_expired_action()
+                if expired:
+                    return CommandResult.failure("confirmation_expired", "That confirmation has expired.")
+                return CommandResult.failure("no_pending_confirmation", "There is no pending command to confirm.")
+
+            action = pending.action
+            self._confirmation_manager.clear()
+            if action == "shutdown_computer":
+                return self._power_service.shutdown_computer()
+            elif action == "restart_computer":
+                return self._power_service.restart_computer()
+            elif action == "sleep_computer":
+                return self._power_service.sleep_computer()
+            else:
+                return CommandResult.failure("unknown_confirmation_action", f"Unknown action '{action}'.")
+
+        if intent.name == "cancel_action":
+            pending = self._confirmation_manager.pending
+            if pending is None:
+                self._confirmation_manager.clear()
+                return CommandResult.failure("no_pending_confirmation", "There is no pending command to cancel.")
+
+            action = pending.action
+            self._confirmation_manager.clear()
+            cancel_messages = {
+                "shutdown_computer": "Shutdown cancelled.",
+                "restart_computer": "Restart cancelled.",
+                "sleep_computer": "Sleep cancelled.",
+            }
+            message = cancel_messages.get(action, "Operation cancelled.")
+            return CommandResult.ok(message, cancelled_action=action)
+
 
 
         if intent.name == "launch_application":

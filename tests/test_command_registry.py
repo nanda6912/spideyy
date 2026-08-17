@@ -239,8 +239,41 @@ class CommandRegistryTests(unittest.TestCase):
                 self.assertIsNotNone(intent)
                 self.assertEqual(intent.name, "lock_computer")
 
+    def test_28_power_command_intents(self) -> None:
+        for phrase in ("shutdown computer", "shut down computer"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "shutdown_computer")
+
+        for phrase in ("restart computer", "restart workstation"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "restart_computer")
+
+        for phrase in ("sleep computer", "sleep workstation"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "sleep_computer")
+
+    def test_29_confirmation_and_cancellation_intents(self) -> None:
+        for phrase in ("yes", "confirm", "confirmed"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "confirm_action")
+
+        for phrase in ("no", "cancel", "cancel it", "abort"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "cancel_action")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

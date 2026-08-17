@@ -340,7 +340,43 @@ def get_default_command_registry() -> CommandRegistry:
             description="Lock the current Windows user session",
         )
     )
+    registry.register(
+        CommandDefinition(
+            name="shutdown_computer",
+            patterns=("shutdown computer", "shut down computer"),
+            description="Initiate confirmation for shutting down the computer",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="restart_computer",
+            patterns=("restart computer", "restart workstation"),
+            description="Initiate confirmation for restarting the computer",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="sleep_computer",
+            patterns=("sleep computer", "sleep workstation"),
+            description="Initiate confirmation for putting the computer to sleep",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="confirm_action",
+            patterns=("yes", "confirm", "confirmed"),
+            description="Confirm a pending high-risk system action",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="cancel_action",
+            patterns=("no", "cancel", "cancel it", "abort"),
+            description="Cancel a pending high-risk system action",
+        )
+    )
 
     return registry
+
 
 

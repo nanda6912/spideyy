@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from core.command_router import CommandRouter
+from core.confirmation import ConfirmationManager
 from core.models import CommandResult
 from core.state import AssistantState, StateManager
 from system.application_discovery import ApplicationRegistry
@@ -12,6 +13,7 @@ from system.application_registry_service import ApplicationRegistryService
 from system.monitor_manager import MonitorManager
 from system.system_control import SystemControlService
 from system.system_information import SystemInformationService
+from system.system_power import SystemPowerService
 from system.window_manager import WindowManager
 
 
@@ -28,6 +30,8 @@ class JarvisAssistant:
         state_manager: StateManager | None = None,
         system_info_service: SystemInformationService | None = None,
         system_control_service: SystemControlService | None = None,
+        power_service: SystemPowerService | None = None,
+        confirmation_manager: ConfirmationManager | None = None,
     ) -> None:
         self.registry = registry or ApplicationRegistry()
         self.state_manager = state_manager or StateManager()
@@ -45,6 +49,8 @@ class JarvisAssistant:
         self.system_control_service = (
             system_control_service or SystemControlService()
         )
+        self.power_service = power_service or SystemPowerService()
+        self.confirmation_manager = confirmation_manager or ConfirmationManager()
 
         self.router = CommandRouter(
             self.registry,
@@ -55,7 +61,10 @@ class JarvisAssistant:
             self.registry_service,
             system_info_service=self.system_info_service,
             system_control_service=self.system_control_service,
+            power_service=self.power_service,
+            confirmation_manager=self.confirmation_manager,
         )
+
 
 
 
