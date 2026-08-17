@@ -94,8 +94,18 @@ class CommandRegistry:
                     for name in names:
                         for number in range(1, monitor_count + 1):
                             phrases.add(f"move {name} to monitor {number}")
+                elif definition.name == "set_volume":
+                    for number in (0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100):
+                        phrases.add(f"set volume to {number}")
 
         return sorted(phrases)
+
+
+_WORD_TO_NUMBER = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100, "one hundred": 100,
+}
 
 
 def _match_launch(command: str, defn: CommandDefinition) -> CommandIntent | None:
@@ -133,6 +143,36 @@ def _match_move_window(command: str, defn: CommandDefinition) -> CommandIntent |
             arguments={"monitor": int(monitor_str)},
             raw_command=command,
         )
+    return None
+
+
+def _match_set_volume(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"set volume to (.+)", command)
+    if match:
+        raw_val = match.group(1).strip()
+        if raw_val.isdigit() or (raw_val.startswith("-") and raw_val[1:].isdigit()):
+            level = int(raw_val)
+            return CommandIntent(
+                name=defn.name,
+                arguments={"level": level},
+                raw_command=command,
+            )
+        elif raw_val in _WORD_TO_NUMBER:
+            level = _WORD_TO_NUMBER[raw_val]
+            return CommandIntent(
+                name=defn.name,
+                arguments={"level": level},
+                raw_command=command,
+            )
+        else:
+            parts = raw_val.split()
+            if len(parts) == 2 and parts[0] in _WORD_TO_NUMBER and parts[1] in _WORD_TO_NUMBER:
+                level = _WORD_TO_NUMBER[parts[0]] + _WORD_TO_NUMBER[parts[1]]
+                return CommandIntent(
+                    name=defn.name,
+                    arguments={"level": level},
+                    raw_command=command,
+                )
     return None
 
 
@@ -257,6 +297,50 @@ def get_default_command_registry() -> CommandRegistry:
             description="Report combined system status metrics",
         )
     )
+    registry.register(
+        CommandDefinition(
+            name="mute_volume",
+            patterns=("mute volume", "mute"),
+            description="Mute system audio",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="unmute_volume",
+            patterns=("unmute volume", "unmute"),
+            description="Unmute system audio",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="volume_up",
+            patterns=("volume up",),
+            description="Increase system volume by 5%",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="volume_down",
+            patterns=("volume down",),
+            description="Decrease system volume by 5%",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="set_volume",
+            verbs=("set volume to",),
+            description="Set system volume to an explicit percentage (0-100)",
+            matcher=_match_set_volume,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="lock_computer",
+            patterns=("lock computer", "lock workstation"),
+            description="Lock the current Windows user session",
+        )
+    )
 
     return registry
+
 

@@ -83,12 +83,15 @@ _NUMBER_WORDS = {
 
 
 def _number_to_words(number: int) -> str:
-    if number < 0 or number >= 100:
-        raise ValueError("grammar numbers must be between 0 and 99")
+    if number < 0 or number > 100:
+        raise ValueError("grammar numbers must be between 0 and 100")
+    if number == 100:
+        return "one hundred"
     if number in _NUMBER_WORDS:
         return _NUMBER_WORDS[number]
     tens, units = divmod(number, 10)
     return f"{_NUMBER_WORDS[tens * 10]} {_NUMBER_WORDS[units]}"
+
 
 
 def _vosk_phrase(phrase: str) -> str:

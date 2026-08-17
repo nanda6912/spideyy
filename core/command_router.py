@@ -11,6 +11,7 @@ from system.application_discovery import ApplicationRegistry, DiscoveredApplicat
 from system.application_launcher import ApplicationLauncher
 from system.application_registry_service import ApplicationRegistryService
 from system.monitor_manager import MonitorManager
+from system.system_control import SystemControlService
 from system.system_information import SystemInformationService
 from system.window_manager import WindowInfo, WindowManager
 
@@ -33,6 +34,7 @@ class CommandRouter:
         registry_service: ApplicationRegistryService | None = None,
         command_registry: CommandRegistry | None = None,
         system_info_service: SystemInformationService | None = None,
+        system_control_service: SystemControlService | None = None,
     ) -> None:
         self._registry = registry
         self._launcher = launcher
@@ -42,6 +44,7 @@ class CommandRouter:
         self._registry_service = registry_service
         self._command_registry = command_registry or get_default_command_registry()
         self._system_info_service = system_info_service or SystemInformationService()
+        self._system_control_service = system_control_service or SystemControlService()
 
     def route(self, command: str) -> CommandResult:
         """Return a structured result for one supported, normalized command."""
@@ -102,6 +105,26 @@ class CommandRouter:
 
         if intent.name == "get_system_status":
             return self._system_info_service.get_system_status()
+
+        if intent.name == "mute_volume":
+            return self._system_control_service.mute_volume()
+
+        if intent.name == "unmute_volume":
+            return self._system_control_service.unmute_volume()
+
+        if intent.name == "volume_up":
+            return self._system_control_service.volume_up()
+
+        if intent.name == "volume_down":
+            return self._system_control_service.volume_down()
+
+        if intent.name == "set_volume":
+            level = intent.arguments.get("level")
+            return self._system_control_service.set_volume(level)
+
+        if intent.name == "lock_computer":
+            return self._system_control_service.lock_computer()
+
 
         if intent.name == "launch_application":
             if not intent.target:

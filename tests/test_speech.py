@@ -296,3 +296,28 @@ def test_diagnostic_timing_is_reported():
     ]
     assert final_events[0].elapsed_since_previous_result is None
     assert final_events[1].elapsed_since_previous_result is not None
+
+
+def test_number_to_words_converts_0_to_100():
+    from voice.speech import _number_to_words
+
+    assert _number_to_words(0) == "zero"
+    assert _number_to_words(50) == "fifty"
+    assert _number_to_words(99) == "ninety nine"
+    assert _number_to_words(100) == "one hundred"
+
+    with pytest.raises(ValueError):
+        _number_to_words(-1)
+
+    with pytest.raises(ValueError):
+        _number_to_words(101)
+
+
+def test_set_volume_grammar_supports_0_to_100():
+    grammar = build_command_grammar(["chrome"], 1)
+
+    assert "set volume to 0" in grammar
+    assert "set volume to 50" in grammar
+    assert "set volume to 100" in grammar
+    assert "set volume to 101" not in grammar
+

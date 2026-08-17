@@ -10,6 +10,7 @@ from system.application_discovery import ApplicationRegistry
 from system.application_launcher import ApplicationLauncher
 from system.application_registry_service import ApplicationRegistryService
 from system.monitor_manager import MonitorManager
+from system.system_control import SystemControlService
 from system.system_information import SystemInformationService
 from system.window_manager import WindowManager
 
@@ -26,6 +27,7 @@ class JarvisAssistant:
         launcher: ApplicationLauncher | None = None,
         state_manager: StateManager | None = None,
         system_info_service: SystemInformationService | None = None,
+        system_control_service: SystemControlService | None = None,
     ) -> None:
         self.registry = registry or ApplicationRegistry()
         self.state_manager = state_manager or StateManager()
@@ -40,6 +42,9 @@ class JarvisAssistant:
         self.system_info_service = (
             system_info_service or SystemInformationService()
         )
+        self.system_control_service = (
+            system_control_service or SystemControlService()
+        )
 
         self.router = CommandRouter(
             self.registry,
@@ -49,7 +54,9 @@ class JarvisAssistant:
             self.state_manager,
             self.registry_service,
             system_info_service=self.system_info_service,
+            system_control_service=self.system_control_service,
         )
+
 
 
     def startup(self) -> CommandResult:

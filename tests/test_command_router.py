@@ -139,3 +139,47 @@ class CommandRouterTests(unittest.TestCase):
         self.assertEqual(router.route("system status").message, "System status summary.")
         sys_info.get_system_status.assert_called_once()
 
+    def test_routes_system_control_commands(self) -> None:
+        sys_control = Mock()
+        sys_control.mute_volume.return_value = CommandResult.ok("Volume muted.")
+        sys_control.unmute_volume.return_value = CommandResult.ok("Volume unmuted.")
+        sys_control.volume_up.return_value = CommandResult.ok("Volume is at 55 percent.")
+        sys_control.volume_down.return_value = CommandResult.ok("Volume is at 45 percent.")
+        sys_control.set_volume.side_effect = lambda level: (
+            CommandResult.ok(f"Volume is at {level} percent.")
+            if 0 <= level <= 100
+            else CommandResult.failure("invalid_volume_level", "Volume must be between 0 and 100 percent.")
+        )
+        sys_control.lock_computer.return_value = CommandResult.ok("Computer locked.")
+
+        router = CommandRouter(
+            self.registry,
+            self.launcher,
+            self.monitors,
+            self.windows,
+            self.state,
+            system_control_service=sys_control,
+        )
+
+        self.assertEqual(router.route("mute volume").message, "Volume muted.")
+        sys_control.mute_volume.assert_called_once()
+
+        self.assertEqual(router.route("unmute volume").message, "Volume unmuted.")
+        sys_control.unmute_volume.assert_called_once()
+
+        self.assertEqual(router.route("volume up").message, "Volume is at 55 percent.")
+        sys_control.volume_up.assert_called_once()
+
+        self.assertEqual(router.route("volume down").message, "Volume is at 45 percent.")
+        sys_control.volume_down.assert_called_once()
+
+        self.assertEqual(router.route("set volume to 50").message, "Volume is at 50 percent.")
+        sys_control.set_volume.assert_called_with(50)
+
+        self.assertEqual(router.route("set volume to 150").error_code, "invalid_volume_level")
+        sys_control.set_volume.assert_called_with(150)
+
+        self.assertEqual(router.route("lock computer").message, "Computer locked.")
+        sys_control.lock_computer.assert_called_once()
+
+

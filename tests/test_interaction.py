@@ -186,3 +186,20 @@ def test_system_information_voice_command_is_spoken_and_returns_to_wake():
     assistant.handle_voice_command.assert_called_once_with("cpu usage")
     interaction._tts.speak.assert_called_once_with("CPU usage is 18 percent.")
     assert interaction.mode == "wake"
+
+
+def test_system_control_voice_command_is_spoken_and_returns_to_wake():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    assistant.handle_voice_command.return_value = (
+        CommandResult.ok("Volume is at 50 percent.")
+    )
+
+    interaction._mode = "command"
+    interaction._process_text("set volume to 50")
+
+    assistant.handle_voice_command.assert_called_once_with("set volume to 50")
+    interaction._tts.speak.assert_called_once_with("Volume is at 50 percent.")
+    assert interaction.mode == "wake"
+

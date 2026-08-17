@@ -134,7 +134,12 @@ Implemented commands include:
 - `disk usage`, `disk status`, and `storage status`
 - `battery status` and `battery level`
 - `what time is it`, `current time`, and `time`
-- `system status`
+- `mute volume` and `mute`
+- `unmute volume` and `unmute`
+- `volume up` and `volume down`
+- `set volume to <number>`
+- `lock computer` and `lock workstation`
+
 
 
 Application names and aliases come from the local registry. Monitor numbers in

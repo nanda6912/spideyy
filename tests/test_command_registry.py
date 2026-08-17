@@ -200,7 +200,47 @@ class CommandRegistryTests(unittest.TestCase):
         self.assertIsNotNone(intent)
         self.assertEqual(intent.name, "get_system_status")
 
+    def test_24_mute_and_unmute_intents(self) -> None:
+        intent_mute = self.registry.match("mute volume")
+        self.assertIsNotNone(intent_mute)
+        self.assertEqual(intent_mute.name, "mute_volume")
+
+        intent_unmute = self.registry.match("unmute volume")
+        self.assertIsNotNone(intent_unmute)
+        self.assertEqual(intent_unmute.name, "unmute_volume")
+
+    def test_25_volume_up_down_intents(self) -> None:
+        intent_up = self.registry.match("volume up")
+        self.assertIsNotNone(intent_up)
+        self.assertEqual(intent_up.name, "volume_up")
+
+        intent_down = self.registry.match("volume down")
+        self.assertIsNotNone(intent_down)
+        self.assertEqual(intent_down.name, "volume_down")
+
+    def test_26_set_volume_intent_and_arguments(self) -> None:
+        intent_num = self.registry.match("set volume to 50")
+        self.assertIsNotNone(intent_num)
+        self.assertEqual(intent_num.name, "set_volume")
+        self.assertEqual(intent_num.arguments.get("level"), 50)
+
+        intent_word = self.registry.match("set volume to fifty")
+        self.assertIsNotNone(intent_word)
+        self.assertEqual(intent_word.name, "set_volume")
+        self.assertEqual(intent_word.arguments.get("level"), 50)
+
+        intent_invalid = self.registry.match("set volume to unknown")
+        self.assertIsNone(intent_invalid)
+
+    def test_27_lock_computer_intent(self) -> None:
+        for phrase in ("lock computer", "lock workstation"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "lock_computer")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
