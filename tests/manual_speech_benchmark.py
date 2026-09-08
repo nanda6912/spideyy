@@ -27,6 +27,11 @@ PHRASES = (
     "minimize chrome",
     "restore chrome",
     "move chrome to monitor 2",
+    "focus chrome",
+    "switch to chrome",
+    "bring chrome to front",
+    "close chrome",
+    "close this window",
 )
 
 

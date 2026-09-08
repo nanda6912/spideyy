@@ -10,6 +10,7 @@ from core.state import AssistantState, StateManager
 from system.application_discovery import ApplicationRegistry
 from system.application_launcher import ApplicationLauncher
 from system.application_registry_service import ApplicationRegistryService
+from system.desktop_context import DesktopContextService
 from system.monitor_manager import MonitorManager
 from system.system_control import SystemControlService
 from system.system_information import SystemInformationService
@@ -32,6 +33,7 @@ class JarvisAssistant:
         system_control_service: SystemControlService | None = None,
         power_service: SystemPowerService | None = None,
         confirmation_manager: ConfirmationManager | None = None,
+        desktop_context_service: DesktopContextService | None = None,
     ) -> None:
         self.registry = registry or ApplicationRegistry()
         self.state_manager = state_manager or StateManager()
@@ -51,6 +53,12 @@ class JarvisAssistant:
         )
         self.power_service = power_service or SystemPowerService()
         self.confirmation_manager = confirmation_manager or ConfirmationManager()
+        self.desktop_context_service = (
+            desktop_context_service
+            or DesktopContextService(
+                self.registry, self.window_manager, self.monitor_manager
+            )
+        )
 
         self.router = CommandRouter(
             self.registry,
@@ -63,6 +71,7 @@ class JarvisAssistant:
             system_control_service=self.system_control_service,
             power_service=self.power_service,
             confirmation_manager=self.confirmation_manager,
+            desktop_context_service=self.desktop_context_service,
         )
 
 

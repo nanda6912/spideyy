@@ -127,8 +127,10 @@ Implemented commands include:
 - `show monitors`, `list monitors`, and `how many monitors`
 - `refresh applications`
 - `open <application>`, `launch <application>`, and `start <application>`
-- `maximize <application>`, `minimize <application>`, and `restore <application>`
-- `move <application> to monitor <number>`
+- Active Window Actions: `maximize this window`, `minimize this window`, `restore this window`, `move this window to monitor <number>`, `maximize <application>`, `minimize <application>`, `restore <application>`, `move <application> to monitor <number>`
+- Window Focus: `focus <application>`, `switch to <application>`, and `bring <application> to front` execute immediately.
+- Safe Window Close: `close <application>` and `close this window` require explicit confirmation and send graceful `WM_CLOSE`; SPIDEYY never kills processes.
+- Read-Only Desktop Context: `what window is active`, `what application is active`, `which monitor is this window on`, `is <application> open`, `is <application> running`, `what applications are open`, `where is <application>`
 - `cpu usage`, `cpu status`, and `processor usage`
 - `memory usage`, `ram usage`, and `memory status`
 - `disk usage`, `disk status`, and `storage status`

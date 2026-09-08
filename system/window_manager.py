@@ -67,7 +67,7 @@ class WindowManager:
 
         try:
             win32gui.EnumWindows(collect, None)
-        except OSError as error:
+        except Exception as error:
             logger.error("Window enumeration failed (%s).", type(error).__name__)
         return sorted(windows, key=lambda window: (window.title.casefold(), window.handle))
 
@@ -87,6 +87,127 @@ class WindowManager:
                 partial_matches.append(window)
         matches = exact_matches or partial_matches
         return matches[0] if matches else None
+
+    def get_active_window(self) -> WindowInfo | None:
+        """Return the currently focused top-level window, or None if unavailable."""
+        try:
+            handle = win32gui.GetForegroundWindow()
+        except Exception as error:
+            logger.error("GetForegroundWindow failed (%s).", type(error).__name__)
+            return None
+        if not handle or not win32gui.IsWindow(handle):
+            return None
+        title = ""
+        try:
+            title = win32gui.GetWindowText(handle).strip()
+        except Exception:
+            pass
+        return self._window_info(handle, title or "(unknown)")
+
+    def list_open_windows(self) -> list[WindowInfo]:
+        """Return a filtered list of visible, usable, titled top-level windows.
+
+        Applies extra filtering on top of ``get_windows`` to remove obvious
+        system helper windows (zero-size, system-class, or untitled).
+        """
+        results: list[WindowInfo] = []
+        for window in self.get_windows():
+            # Skip windows with no meaningful size (invisible helpers).
+            if window.width <= 0 or window.height <= 0:
+                continue
+            # Skip obvious Windows internals by class name.
+            try:
+                class_name = win32gui.GetClassName(window.handle)
+            except OSError:
+                class_name = ""
+            if class_name in {
+                "Shell_TrayWnd",        # taskbar
+                "Progman",              # desktop
+                "WorkerW",              # desktop worker
+                "DV2ControlHost",       # start menu host
+                "ApplicationFrameWindow",  # some UWP wrappers
+            }:
+                continue
+            results.append(window)
+        return results
+
+    def activate_window(self, window: WindowReference) -> CommandResult:
+        """Bring a window to the foreground and give it keyboard focus."""
+        handle = self._valid_handle(window)
+        if handle is None:
+            return self._missing_window_result()
+        try:
+            # Restore if minimized before activating.
+            if win32gui.IsIconic(handle):
+                win32gui.ShowWindow(handle, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(handle)
+        except Exception as error:
+            logger.error("SetForegroundWindow failed (%s).", type(error).__name__)
+            return CommandResult.failure(
+                "window_activate_failed",
+                "I couldn't activate that window.",
+            )
+        return CommandResult.ok("Window activated.", handle=handle)
+
+    def focus_window(self, window: WindowReference) -> CommandResult:
+        """Bring a window to the foreground and give it keyboard focus."""
+        return self.activate_window(window)
+
+    def close_window(self, window: WindowReference) -> CommandResult:
+        """Request normal window closure using Windows WM_CLOSE message.
+
+        Does NOT call TerminateProcess, taskkill, or kill the process.
+        """
+        handle = self._valid_handle(window)
+        if handle is None:
+            return self._missing_window_result()
+        try:
+            win32gui.PostMessage(handle, win32con.WM_CLOSE, 0, 0)
+        except Exception as error:
+            logger.error("WM_CLOSE PostMessage failed (%s).", type(error).__name__)
+            return CommandResult.failure(
+                "window_close_failed",
+                "I couldn't close that window.",
+            )
+        return CommandResult.ok("Window close requested.", handle=handle)
+
+    def get_window_monitor(self, window: WindowReference) -> MonitorInfo | None:
+        """Return the ``MonitorInfo`` that contains the majority of *window*.
+
+        Uses the window's current rect and asks MonitorManager for the monitor
+        whose working area overlaps most with the window centre point.
+        Returns ``None`` if no monitor can be determined or the handle is invalid.
+        """
+        handle = self._valid_handle(window)
+        if handle is None:
+            return None
+        try:
+            left, top, right, bottom = win32gui.GetWindowRect(handle)
+        except OSError as error:
+            logger.error("GetWindowRect failed (%s).", type(error).__name__)
+            return None
+        centre_x = (left + right) // 2
+        centre_y = (top + bottom) // 2
+        for monitor in self._monitor_manager.get_monitors():
+            mx = monitor.available_x
+            my = monitor.available_y
+            mw = monitor.available_width
+            mh = monitor.available_height
+            if mx <= centre_x < mx + mw and my <= centre_y < my + mh:
+                return monitor
+        # Fallback: check any overlap with window bounds across all monitors.
+        for monitor in self._monitor_manager.get_monitors():
+            mx = monitor.available_x
+            my = monitor.available_y
+            mw = monitor.available_width
+            mh = monitor.available_height
+            if left < mx + mw and right > mx and top < my + mh and bottom > my:
+                return monitor
+        return None
+
+    def is_application_open(self, query: str) -> bool:
+        """Return ``True`` when a visible window matching *query* exists."""
+        return self.find_window(query) is not None
 
     def maximize_window(self, window: WindowReference) -> CommandResult:
         """Maximize a known top-level window."""
@@ -185,6 +306,8 @@ class WindowManager:
             _, process_id = win32process.GetWindowThreadProcessId(handle)
             process_name = WindowManager._process_name(process_id)
             left, top, right, bottom = win32gui.GetWindowRect(handle)
+            width = max(0, right - left)
+            height = max(0, bottom - top)
             return WindowInfo(
                 handle=handle,
                 title=title,
@@ -192,10 +315,10 @@ class WindowManager:
                 process_name=process_name,
                 x=left,
                 y=top,
-                width=right - left,
-                height=bottom - top,
+                width=width,
+                height=height,
             )
-        except OSError:
+        except Exception:
             return None
 
     @staticmethod

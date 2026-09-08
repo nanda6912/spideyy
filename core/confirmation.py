@@ -15,6 +15,8 @@ class PendingConfirmation:
     created_at: float = field(default_factory=time.monotonic)
     timeout_seconds: float = 10.0
     description: str = ""
+    target: str | None = None
+    hwnd: int | None = None
 
     def is_expired(self, current_time: float | None = None) -> bool:
         """Return whether this pending confirmation has exceeded its timeout."""
@@ -48,7 +50,12 @@ class ConfirmationManager:
         return self._pending
 
     def create(
-        self, action: str, description: str = "", timeout: float | None = None
+        self,
+        action: str,
+        description: str = "",
+        timeout: float | None = None,
+        target: str | None = None,
+        hwnd: int | None = None,
     ) -> PendingConfirmation:
         """Store a new pending confirmation, overriding any previous pending action."""
         duration = self._default_timeout if timeout is None else timeout
@@ -57,6 +64,8 @@ class ConfirmationManager:
             created_at=self._time_provider(),
             timeout_seconds=duration,
             description=description,
+            target=target,
+            hwnd=hwnd,
         )
         self._pending = pending
         self._last_expired_action = None

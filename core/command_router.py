@@ -11,6 +11,7 @@ from core.state import StateManager
 from system.application_discovery import ApplicationRegistry, DiscoveredApplication
 from system.application_launcher import ApplicationLauncher
 from system.application_registry_service import ApplicationRegistryService
+from system.desktop_context import DesktopContextService
 from system.monitor_manager import MonitorManager
 from system.system_control import SystemControlService
 from system.system_information import SystemInformationService
@@ -39,6 +40,7 @@ class CommandRouter:
         system_control_service: SystemControlService | None = None,
         power_service: SystemPowerService | None = None,
         confirmation_manager: ConfirmationManager | None = None,
+        desktop_context_service: DesktopContextService | None = None,
     ) -> None:
         self._registry = registry
         self._launcher = launcher
@@ -51,6 +53,14 @@ class CommandRouter:
         self._system_control_service = system_control_service or SystemControlService()
         self._power_service = power_service or SystemPowerService()
         self._confirmation_manager = confirmation_manager or ConfirmationManager()
+        self._desktop_context_service = (
+            desktop_context_service
+            or DesktopContextService(
+                registry=self._registry,
+                window_manager=self._window_manager,
+                monitor_manager=self._monitor_manager,
+            )
+        )
 
     def route(self, command: str) -> CommandResult:
         """Return a structured result for one supported, normalized command."""
@@ -171,6 +181,28 @@ class CommandRouter:
                 return self._power_service.restart_computer()
             elif action == "sleep_computer":
                 return self._power_service.sleep_computer()
+            elif action == "close_application":
+                if pending.hwnd is not None:
+                    res = self._window_manager.close_window(pending.hwnd)
+                    if res.success:
+                        display_name = pending.target or "Application"
+                        return CommandResult.ok(
+                            f"{display_name} window closed.",
+                            application=pending.target,
+                            hwnd=pending.hwnd,
+                        )
+                    return res
+                return CommandResult.failure("window_close_failed", "I couldn't close that window.")
+            elif action == "close_active_window":
+                if pending.hwnd is not None:
+                    res = self._window_manager.close_window(pending.hwnd)
+                    if res.success:
+                        return CommandResult.ok(
+                            "The active window was closed.",
+                            hwnd=pending.hwnd,
+                        )
+                    return res
+                return CommandResult.failure("window_close_failed", "I couldn't close that window.")
             else:
                 return CommandResult.failure("unknown_confirmation_action", f"Unknown action '{action}'.")
 
@@ -181,15 +213,145 @@ class CommandRouter:
                 return CommandResult.failure("no_pending_confirmation", "There is no pending command to cancel.")
 
             action = pending.action
+            target_name = pending.target
             self._confirmation_manager.clear()
             cancel_messages = {
                 "shutdown_computer": "Shutdown cancelled.",
                 "restart_computer": "Restart cancelled.",
                 "sleep_computer": "Sleep cancelled.",
+                "close_application": f"Closing {target_name or 'application'} window cancelled.",
+                "close_active_window": "Closing active window cancelled.",
             }
             message = cancel_messages.get(action, "Operation cancelled.")
             return CommandResult.ok(message, cancelled_action=action)
 
+        # ── Phase 5A & 5B: Context-Aware Window & Desktop Intelligence ────────
+        if intent.name == "get_active_window":
+            return self._desktop_context_service.get_active_window()
+
+        if intent.name == "get_active_application":
+            return self._desktop_context_service.get_active_application()
+
+        if intent.name == "get_active_window_monitor":
+            return self._desktop_context_service.get_active_window_monitor()
+
+        if intent.name in {"check_application_running", "check_application_open"}:
+            if not intent.target:
+                return CommandResult.failure(
+                    "application_not_found",
+                    "I couldn't find that application in the application registry.",
+                )
+            return self._desktop_context_service.is_application_running(intent.target)
+
+        if intent.name in {"list_open_applications", "list_open_windows"}:
+            return self._desktop_context_service.get_open_applications()
+
+        if intent.name in {"locate_application", "get_application_monitor"}:
+            if not intent.target:
+                return CommandResult.failure(
+                    "application_not_found",
+                    "I couldn't find that application in the application registry.",
+                )
+            return self._desktop_context_service.locate_application(intent.target)
+
+        if intent.name == "focus_application":
+            if not intent.target:
+                return CommandResult.failure(
+                    "application_not_found",
+                    "I couldn't find that application in the application registry.",
+                )
+            return self._desktop_context_service.focus_application(intent.target)
+
+        if intent.name == "close_application":
+            if not intent.target:
+                return CommandResult.failure(
+                    "application_not_found",
+                    "I couldn't find that application in the application registry.",
+                )
+            app = self._registry.match(intent.target)
+            if app is None:
+                return CommandResult.failure(
+                    "application_not_found",
+                    "I couldn't find that application in the application registry.",
+                )
+            window = self._find_window_for_application(app, intent.target)
+            if window is None:
+                return CommandResult.failure(
+                    "window_not_found",
+                    f"I couldn't find a visible {app.name} window.",
+                    application=app.name,
+                )
+            self._confirmation_manager.create(
+                "close_application",
+                description=f"close the {app.name} window",
+                target=app.name,
+                hwnd=window.handle,
+            )
+            return CommandResult.ok(
+                f"Are you sure you want to close the {app.name} window?",
+                pending_confirmation="close_application",
+                requires_confirmation=True,
+                application=app.name,
+                hwnd=window.handle,
+            )
+
+        if intent.name == "close_active_window":
+            window = self._window_manager.get_active_window()
+            if window is None:
+                return CommandResult.failure(
+                    "no_active_window",
+                    "I couldn't find an active window.",
+                )
+            if window.title and any(d in window.title.casefold() for d in ("jarvis desktop assistant", "spideyy")):
+                return CommandResult.failure(
+                    "protected_window",
+                    "I cannot close the assistant dashboard unless it is explicitly targeted.",
+                )
+            self._confirmation_manager.create(
+                "close_active_window",
+                description="close the active window",
+                hwnd=window.handle,
+            )
+            return CommandResult.ok(
+                "Are you sure you want to close the active window?",
+                pending_confirmation="close_active_window",
+                requires_confirmation=True,
+                hwnd=window.handle,
+            )
+
+        if intent.name in {
+            "maximize_active_window",
+            "minimize_active_window",
+            "restore_active_window",
+        }:
+            window = self._window_manager.get_active_window()
+            if window is None:
+                return CommandResult.failure(
+                    "no_active_window",
+                    "I couldn't detect an active window.",
+                )
+            handler = {
+                "maximize_active_window": self._window_manager.maximize_window,
+                "minimize_active_window": self._window_manager.minimize_window,
+                "restore_active_window": self._window_manager.restore_window,
+            }[intent.name]
+            return handler(window)
+
+        if intent.name == "move_active_window":
+            monitor_index = intent.arguments.get("monitor")
+            if monitor_index is None or self._monitor_manager.get_monitor(monitor_index) is None:
+                return CommandResult.failure(
+                    "monitor_not_found",
+                    f"Monitor {monitor_index} is not available.",
+                    monitor_index=monitor_index,
+                )
+            window = self._window_manager.get_active_window()
+            if window is None:
+                return CommandResult.failure(
+                    "no_active_window",
+                    "I couldn't detect an active window.",
+                )
+            return self._window_manager.move_window_to_monitor(window, monitor_index)
 
 
         if intent.name == "launch_application":
@@ -272,5 +434,8 @@ class CommandRouter:
     def _help_text() -> str:
         return (
             "You can open applications, show monitors, maximize, minimize, restore, "
-            "or move an application window to a monitor."
+            "or move an application window to a monitor. "
+            "You can also ask: what window is active, list open windows, is chrome open, "
+            "which monitor is chrome on, focus chrome, close chrome, close this window, "
+            "maximize this window, minimize this window, restore this window, or move this window to monitor 2."
         )

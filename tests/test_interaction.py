@@ -231,3 +231,108 @@ def test_power_command_voice_confirmation_flow():
     assert interaction.mode == "wake"
 
 
+def test_phase5b_context_voice_commands():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    commands_and_responses = [
+        ("what window is active", "The active window is Google Chrome."),
+        ("what application is active", "Google Chrome is the active application."),
+        ("which monitor is this window on", "The active window is on monitor 1."),
+        ("is chrome open", "Yes, Google Chrome is running."),
+        ("what applications are open", "Open applications are Google Chrome and Visual Studio Code."),
+        ("where is chrome", "Google Chrome is on monitor 1."),
+    ]
+
+    for command, response in commands_and_responses:
+        assistant.handle_voice_command.return_value = CommandResult.ok(response)
+        interaction._mode = "command"
+        interaction._process_text(command)
+
+        assistant.handle_voice_command.assert_called_with(command)
+        interaction._tts.speak.assert_called_with(response)
+        assert interaction.mode == "wake"
+
+
+def test_phase5c1_focus_voice_command():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    assistant.handle_voice_command.return_value = CommandResult.ok(
+        "Focusing Google Chrome.", application="Google Chrome", hwnd=100
+    )
+
+    interaction._mode = "command"
+    interaction._process_text("focus chrome")
+
+    assistant.handle_voice_command.assert_called_once_with("focus chrome")
+    interaction._tts.speak.assert_called_once_with("Focusing Google Chrome.")
+    assert interaction.mode == "wake"
+
+
+def test_phase5c1_close_application_voice_confirmation_flow():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    # 1. User says "close chrome" -> assistant prompts for confirmation -> returns to wake
+    assistant.handle_voice_command.return_value = CommandResult.ok(
+        "Are you sure you want to close the Google Chrome window?",
+        pending_confirmation="close_application",
+        requires_confirmation=True,
+        application="Google Chrome",
+        hwnd=100,
+    )
+    interaction._mode = "command"
+    interaction._process_text("close chrome")
+
+    assistant.handle_voice_command.assert_called_with("close chrome")
+    interaction._tts.speak.assert_called_with(
+        "Are you sure you want to close the Google Chrome window?"
+    )
+    assert interaction.mode == "wake"
+
+    # 2. User wakes and confirms with "yes" -> window closed -> returns to wake
+    assistant.handle_voice_command.return_value = CommandResult.ok(
+        "Google Chrome window closed.", application="Google Chrome", hwnd=100
+    )
+    interaction._mode = "command"
+    interaction._process_text("yes")
+
+    assistant.handle_voice_command.assert_called_with("yes")
+    interaction._tts.speak.assert_called_with("Google Chrome window closed.")
+    assert interaction.mode == "wake"
+
+
+def test_phase5c1_close_active_window_voice_confirmation_flow():
+    interaction, assistant = create_interaction()
+    interaction._running = True
+
+    # 1. User says "close this window" -> assistant prompts -> returns to wake
+    assistant.handle_voice_command.return_value = CommandResult.ok(
+        "Are you sure you want to close the active window?",
+        pending_confirmation="close_active_window",
+        requires_confirmation=True,
+        hwnd=100,
+    )
+    interaction._mode = "command"
+    interaction._process_text("close this window")
+
+    assistant.handle_voice_command.assert_called_with("close this window")
+    interaction._tts.speak.assert_called_with(
+        "Are you sure you want to close the active window?"
+    )
+    assert interaction.mode == "wake"
+
+    # 2. User wakes and cancels with "no" -> cancelled -> returns to wake
+    assistant.handle_voice_command.return_value = CommandResult.ok(
+        "Closing active window cancelled.", cancelled_action="close_active_window"
+    )
+    interaction._mode = "command"
+    interaction._process_text("no")
+
+    assistant.handle_voice_command.assert_called_with("no")
+    interaction._tts.speak.assert_called_with("Closing active window cancelled.")
+    assert interaction.mode == "wake"
+
+
+

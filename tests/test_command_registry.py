@@ -276,4 +276,238 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class Phase5ACommandRegistryTests(unittest.TestCase):
+    """Tests for Phase 5A context-aware window commands."""
+
+    def setUp(self) -> None:
+        self.registry = get_default_command_registry()
+
+    def test_30_get_active_window_static_patterns(self) -> None:
+        for phrase in (
+            "what window is active",
+            "which window is active",
+            "what is the active window",
+            "active window",
+            "current window",
+        ):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_active_window")
+                self.assertIsNone(intent.target)
+
+    def test_31_list_open_windows_static_patterns(self) -> None:
+        for phrase in ("list open windows", "show open windows", "what windows are open"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "list_open_windows")
+                self.assertIsNone(intent.target)
+
+    def test_32_check_application_open_intent(self) -> None:
+        intent = self.registry.match("is chrome open")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "check_application_open")
+        self.assertEqual(intent.target, "chrome")
+
+    def test_33_check_application_open_multi_word(self) -> None:
+        intent = self.registry.match("is google chrome open")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.target, "google chrome")
+
+    def test_34_get_application_monitor_which(self) -> None:
+        intent = self.registry.match("which monitor is chrome on")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "get_application_monitor")
+        self.assertEqual(intent.target, "chrome")
+
+    def test_35_get_application_monitor_what(self) -> None:
+        intent = self.registry.match("what monitor is chrome on")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "get_application_monitor")
+        self.assertEqual(intent.target, "chrome")
+
+    def test_36_focus_application_intents(self) -> None:
+        for phrase, expected_target in (
+            ("focus chrome", "chrome"),
+            ("activate vscode", "vscode"),
+            ("switch to chrome", "chrome"),
+        ):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "focus_application")
+                self.assertEqual(intent.target, expected_target)
+
+    def test_37_maximize_this_window(self) -> None:
+        intent = self.registry.match("maximize this window")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "maximize_active_window")
+        self.assertIsNone(intent.target)
+        self.assertEqual(intent.raw_command, "maximize this window")
+
+    def test_38_minimize_this_window(self) -> None:
+        intent = self.registry.match("minimize this window")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "minimize_active_window")
+        self.assertIsNone(intent.target)
+        self.assertEqual(intent.raw_command, "minimize this window")
+
+    def test_39_restore_this_window(self) -> None:
+        intent = self.registry.match("restore this window")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "restore_active_window")
+        self.assertIsNone(intent.target)
+        self.assertEqual(intent.raw_command, "restore this window")
+
+    def test_40_move_active_window_intent(self) -> None:
+        intent = self.registry.match("move this window to monitor 2")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "move_active_window")
+        self.assertIsNone(intent.target)
+        self.assertEqual(intent.arguments.get("monitor"), 2)
+        self.assertEqual(intent.raw_command, "move this window to monitor 2")
+
+    def test_41_move_active_window_not_confused_with_move_window(self) -> None:
+        intent = self.registry.match("move this window to monitor 2")
+        self.assertNotEqual(intent.name, "move_window")
+
+    def test_42_grammar_includes_phase5a_phrases(self) -> None:
+        phrases = self.registry.get_grammar_phrases(["chrome", "vscode"], 2)
+        for expected in (
+            "is chrome open", "is vscode open",
+            "which monitor is chrome on", "what monitor is chrome on",
+            "focus chrome", "activate vscode", "switch to chrome",
+            "move this window to monitor 1", "move this window to monitor 2",
+            "what window is active", "list open windows",
+            "maximize this window", "minimize this window", "restore this window",
+        ):
+            with self.subTest(phrase=expected):
+                self.assertIn(expected, phrases)
+
+    def test_43_grammar_move_active_respects_monitor_count(self) -> None:
+        phrases = self.registry.get_grammar_phrases(["chrome"], 1)
+        self.assertIn("move this window to monitor 1", phrases)
+        self.assertNotIn("move this window to monitor 2", phrases)
+
+
+class Phase5BCommandRegistryTests(unittest.TestCase):
+    """Tests for Phase 5B read-only desktop context command registry matching."""
+
+    def setUp(self) -> None:
+        self.registry = get_default_command_registry()
+
+    def test_44_get_active_window_patterns(self) -> None:
+        for phrase in ("what window is active", "which window is active", "active window", "current window"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_active_window")
+                self.assertIsNone(intent.target)
+
+    def test_45_get_active_application_patterns(self) -> None:
+        for phrase in ("what application is active", "which application is active", "active application", "current application"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_active_application")
+                self.assertIsNone(intent.target)
+
+    def test_46_get_active_window_monitor_patterns(self) -> None:
+        for phrase in ("which monitor is this window on", "what monitor is this window on", "which screen is this window on"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "get_active_window_monitor")
+                self.assertIsNone(intent.target)
+
+    def test_47_check_application_running_patterns(self) -> None:
+        for phrase, target in (("is chrome open", "chrome"), ("is vscode running", "vscode")):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertIn(intent.name, {"check_application_running", "check_application_open"})
+                self.assertEqual(intent.target, target)
+
+    def test_48_list_open_applications_patterns(self) -> None:
+        for phrase in ("what applications are open", "what apps are open", "which applications are open", "list open applications", "what is running"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "list_open_applications")
+
+    def test_49_locate_application_patterns(self) -> None:
+        for phrase, target in (("where is chrome", "chrome"), ("where is vscode open", "vscode"), ("which monitor is chrome on", "chrome")):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertIn(intent.name, {"locate_application", "get_application_monitor"})
+                self.assertEqual(intent.target, target)
+
+
+class Phase5C1CommandRegistryTests(unittest.TestCase):
+    """Tests for Phase 5C-1 window focus and close command registry matching."""
+
+    def setUp(self) -> None:
+        self.registry = get_default_command_registry()
+
+    def test_50_focus_application_patterns(self) -> None:
+        for phrase, expected_target in (
+            ("focus chrome", "chrome"),
+            ("switch to chrome", "chrome"),
+            ("bring chrome to front", "chrome"),
+            ("bring chrome forward", "chrome"),
+            ("activate vscode", "vscode"),
+        ):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "focus_application")
+                self.assertEqual(intent.target, expected_target)
+
+    def test_51_close_application_patterns(self) -> None:
+        for phrase, expected_target in (
+            ("close chrome", "chrome"),
+            ("close chrome window", "chrome"),
+            ("close vscode", "vscode"),
+            ("close vscode window", "vscode"),
+        ):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "close_application")
+                self.assertEqual(intent.target, expected_target)
+
+    def test_52_close_active_window_patterns(self) -> None:
+        for phrase in ("close this window", "close current window"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "close_active_window")
+                self.assertIsNone(intent.target)
+
+    def test_53_close_this_window_not_confused_with_close_application(self) -> None:
+        intent = self.registry.match("close this window")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "close_active_window")
+        self.assertNotEqual(intent.name, "close_application")
+
+    def test_54_close_current_window_not_confused_with_close_application(self) -> None:
+        intent = self.registry.match("close current window")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "close_active_window")
+        self.assertNotEqual(intent.name, "close_application")
+
+    def test_55_grammar_includes_phase5c1_phrases(self) -> None:
+        phrases = self.registry.get_grammar_phrases(["chrome", "vscode"], 2)
+        for expected in (
+            "focus chrome", "switch to chrome", "bring chrome to front", "bring chrome forward",
+            "close chrome", "close chrome window",
+            "close this window", "close current window",
+        ):
+            with self.subTest(phrase=expected):
+                self.assertIn(expected, phrases)
+
+
+
 

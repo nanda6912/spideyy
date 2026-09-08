@@ -97,6 +97,33 @@ class CommandRegistry:
                 elif definition.name == "set_volume":
                     for number in (0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100):
                         phrases.add(f"set volume to {number}")
+                elif definition.name in {"check_application_open", "check_application_running"}:
+                    for name in names:
+                        phrases.add(f"is {name} open")
+                        phrases.add(f"is {name} running")
+                elif definition.name in {"get_application_monitor", "locate_application"}:
+                    for name in names:
+                        phrases.add(f"where is {name}")
+                        phrases.add(f"where is {name} open")
+                        phrases.add(f"which monitor is {name} on")
+                        phrases.add(f"what monitor is {name} on")
+                elif definition.name == "focus_application":
+                    for name in names:
+                        phrases.add(f"focus {name}")
+                        phrases.add(f"switch to {name}")
+                        phrases.add(f"activate {name}")
+                        phrases.add(f"bring {name} to front")
+                        phrases.add(f"bring {name} forward")
+                elif definition.name == "close_application":
+                    for name in names:
+                        phrases.add(f"close {name}")
+                        phrases.add(f"close {name} window")
+                elif definition.name == "close_active_window":
+                    phrases.add("close this window")
+                    phrases.add("close current window")
+                elif definition.name == "move_active_window":
+                    for number in range(1, monitor_count + 1):
+                        phrases.add(f"move this window to monitor {number}")
 
         return sorted(phrases)
 
@@ -125,9 +152,12 @@ def _match_window_action(command: str, defn: CommandDefinition) -> CommandIntent
     verbs_pattern = "|".join(re.escape(v) for v in defn.verbs)
     match = re.fullmatch(rf"({verbs_pattern}) (.+)", command)
     if match:
+        target = match.group(2)
+        if target == "this window":
+            return None
         return CommandIntent(
             name=defn.name,
-            target=match.group(2),
+            target=target,
             raw_command=command,
         )
     return None
@@ -137,10 +167,133 @@ def _match_move_window(command: str, defn: CommandDefinition) -> CommandIntent |
     match = re.fullmatch(r"move (.+) to monitor (\d+)", command)
     if match:
         target, monitor_str = match.groups()
+        if target == "this window":
+            return None
         return CommandIntent(
             name=defn.name,
             target=target,
             arguments={"monitor": int(monitor_str)},
+            raw_command=command,
+        )
+    return None
+
+
+def _match_check_open(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"is (.+) open", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    return None
+
+
+def _match_check_running(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"is (.+) running", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    return None
+
+
+def _match_app_monitor(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"(?:which|what) monitor is (.+) on", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    return None
+
+
+def _match_locate_app(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"where is (.+) open", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    match = re.fullmatch(r"where is (.+)", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    return None
+
+
+def _match_focus_app(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"bring (.+) to front", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    match = re.fullmatch(r"bring (.+) forward", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    match = re.fullmatch(r"(?:focus|switch to|activate) (.+)", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            target=match.group(1),
+            raw_command=command,
+        )
+    return None
+
+
+def _match_close_app(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"close (.+) window", command)
+    if match:
+        target = match.group(1).strip()
+        if target in {"this", "current"}:
+            return None
+        return CommandIntent(
+            name=defn.name,
+            target=target,
+            raw_command=command,
+        )
+    match = re.fullmatch(r"close (.+)", command)
+    if match:
+        target = match.group(1).strip()
+        if target in {"this window", "current window"}:
+            return None
+        return CommandIntent(
+            name=defn.name,
+            target=target,
+            raw_command=command,
+        )
+    return None
+
+
+def _match_move_active_window(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"move this window to monitor (\d+)", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
+            arguments={"monitor": int(match.group(1))},
+            raw_command=command,
+        )
+    return None
+
+
+def _match_close_active_window(command: str, defn: CommandDefinition) -> CommandIntent | None:
+    match = re.fullmatch(r"close (this window|current window)", command)
+    if match:
+        return CommandIntent(
+            name=defn.name,
             raw_command=command,
         )
     return None
@@ -376,7 +529,154 @@ def get_default_command_registry() -> CommandRegistry:
         )
     )
 
-    return registry
+    # ── Phase 5A & 5B: Context-Aware Window & Read-Only Desktop Awareness ──
+    registry.register(
+        CommandDefinition(
+            name="get_active_window",
+            patterns=(
+                "what window is active",
+                "which window is active",
+                "active window",
+                "current window",
+                "what is the active window",
+            ),
+            description="Report title and details of the active foreground window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_active_application",
+            patterns=(
+                "what application is active",
+                "which application is active",
+                "active application",
+                "current application",
+                "what app is active",
+            ),
+            description="Report the application owning the active foreground window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_active_window_monitor",
+            patterns=(
+                "which monitor is this window on",
+                "what monitor is this window on",
+                "which screen is this window on",
+                "what screen is this window on",
+            ),
+            description="Report which monitor contains the active window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="check_application_running",
+            verbs=("is",),
+            description="Check whether a named application is open or running",
+            matcher=_match_check_running,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="list_open_applications",
+            patterns=(
+                "what applications are open",
+                "what apps are open",
+                "which applications are open",
+                "list open applications",
+                "what is running",
+            ),
+            description="List user-facing open desktop applications",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="locate_application",
+            verbs=("where is", "which monitor is", "what monitor is"),
+            description="Locate which monitor an application is running or open on",
+            matcher=_match_locate_app,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="list_open_windows",
+            patterns=(
+                "list open windows",
+                "show open windows",
+                "what windows are open",
+            ),
+            description="List visible top-level application windows",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="check_application_open",
+            verbs=("is",),
+            description="Check whether a named application has an open window",
+            matcher=_match_check_open,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="get_application_monitor",
+            verbs=("which monitor is", "what monitor is"),
+            description="Report which monitor a named application window is on",
+            matcher=_match_app_monitor,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="focus_application",
+            verbs=("focus", "switch to", "bring to front", "bring forward", "activate"),
+            description="Bring an application window to the foreground",
+            matcher=_match_focus_app,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="close_application",
+            verbs=("close",),
+            description="Initiate safe confirmation to close an application window",
+            matcher=_match_close_app,
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="close_active_window",
+            patterns=("close this window", "close current window"),
+            description="Initiate safe confirmation to close the currently active window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="maximize_active_window",
+            patterns=("maximize this window",),
+            description="Maximize the currently active window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="minimize_active_window",
+            patterns=("minimize this window",),
+            description="Minimize the currently active window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="restore_active_window",
+            patterns=("restore this window",),
+            description="Restore the currently active window",
+        )
+    )
+    registry.register(
+        CommandDefinition(
+            name="move_active_window",
+            verbs=("move this window to monitor",),
+            description="Move the currently active window to a monitor",
+            matcher=_match_move_active_window,
+        )
+    )
 
+    return registry
 
 
