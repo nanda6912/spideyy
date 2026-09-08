@@ -534,6 +534,7 @@ def get_default_command_registry() -> CommandRegistry:
         CommandDefinition(
             name="get_active_window",
             patterns=(
+                "what is active",
                 "what window is active",
                 "which window is active",
                 "active window",

@@ -284,3 +284,67 @@ class FocusAndCloseWindowTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.error_code, "window_close_failed")
 
+
+class Phase5C2WindowManagerTests(unittest.TestCase):
+    """Phase 5C-2 unit tests for discovery hardening and window inspection."""
+
+    def setUp(self) -> None:
+        self.monitor_manager = Mock()
+        self.manager = WindowManager(self.monitor_manager)
+        self.win1 = WindowInfo(10, "Google Chrome - Tab 1", 100, "chrome.exe", 0, 0, 800, 600)
+        self.win2 = WindowInfo(20, "Google Chrome - Tab 2", 100, "chrome.exe", 0, 0, 800, 600)
+        self.win3 = WindowInfo(30, "Visual Studio Code", 200, "code.exe", 0, 0, 800, 600)
+
+    def test_find_windows_returns_deterministic_matches(self) -> None:
+        with patch.object(self.manager, "get_windows", return_value=[self.win2, self.win1, self.win3]):
+            matches = self.manager.find_windows("chrome")
+            self.assertEqual(len(matches), 2)
+            # Deterministically sorted by title: Tab 1 then Tab 2
+            self.assertEqual(matches[0].handle, 10)
+            self.assertEqual(matches[1].handle, 20)
+
+    def test_find_windows_empty_query(self) -> None:
+        matches = self.manager.find_windows("")
+        self.assertEqual(matches, [])
+
+    @patch("system.window_manager.win32gui.IsWindow")
+    def test_is_valid_window(self, mock_is_window) -> None:
+        mock_is_window.return_value = True
+        self.assertTrue(self.manager.is_valid_window(10))
+        mock_is_window.return_value = False
+        self.assertFalse(self.manager.is_valid_window(10))
+        self.assertFalse(self.manager.is_valid_window(-1))
+
+    @patch("system.window_manager.win32gui.IsIconic")
+    @patch("system.window_manager.win32gui.IsWindow", return_value=True)
+    def test_is_minimized(self, mock_is_window, mock_is_iconic) -> None:
+        mock_is_iconic.return_value = True
+        self.assertTrue(self.manager.is_minimized(10))
+        mock_is_iconic.return_value = False
+        self.assertFalse(self.manager.is_minimized(10))
+
+    @patch("system.window_manager.win32gui.GetForegroundWindow", return_value=80)
+    @patch("system.window_manager.win32gui.IsIconic", return_value=False)
+    @patch("system.window_manager.win32gui.IsWindow", return_value=True)
+    @patch("system.window_manager.win32gui.SetForegroundWindow")
+    def test_focus_window_already_focused(self, mock_set_fg, mock_is_window, mock_iconic, mock_get_fg) -> None:
+        win = WindowInfo(80, "Active Window", 1, "test.exe", 0, 0, 800, 600)
+        result = self.manager.focus_window(win)
+        self.assertTrue(result.success)
+        self.assertEqual(result.message, "Window is already focused.")
+        mock_set_fg.assert_not_called()
+
+    @patch("system.window_manager.win32gui.IsWindow", return_value=True)
+    @patch("system.window_manager.win32gui.GetWindowText", return_value="Google Chrome")
+    @patch.object(WindowManager, "_window_info")
+    def test_get_window_info_valid(self, mock_win_info, mock_text, mock_is_window) -> None:
+        mock_win_info.return_value = self.win1
+        info = self.manager.get_window_info(10)
+        self.assertEqual(info, self.win1)
+
+    @patch("system.window_manager.win32gui.IsWindow", return_value=False)
+    def test_get_window_info_invalid(self, mock_is_window) -> None:
+        info = self.manager.get_window_info(999)
+        self.assertIsNone(info)
+
+

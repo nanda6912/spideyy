@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -61,10 +62,17 @@ class JarvisDashboard(QMainWindow):
     task_completed = Signal(object, str)
 
     def __init__(
-        self, assistant: JarvisAssistant, *, initialize_on_startup: bool = True
+        self,
+        assistant: JarvisAssistant,
+        *,
+        initialize_on_startup: bool = True,
+        enable_voice: bool = True,
+        voice_interaction: Any = None,
     ) -> None:
         super().__init__()
         self._assistant = assistant
+        self._enable_voice = enable_voice
+        self._voice_interaction = voice_interaction
         self._threads: set[QThread] = set()
         self._workers: set[_TaskWorker] = set()
         self.task_completed.connect(self._handle_task_result)
@@ -74,6 +82,8 @@ class JarvisDashboard(QMainWindow):
         self._set_state(AssistantState.STANDBY)
         if initialize_on_startup:
             self._run_async(self._assistant.startup, "startup")
+            if self._enable_voice:
+                QTimer.singleShot(500, self._start_voice_services)
         else:
             self._update_counts()
 
@@ -96,9 +106,11 @@ class JarvisDashboard(QMainWindow):
         self.state_indicator.setMinimumWidth(130)
         self.monitor_count_label = QLabel("Monitors: —")
         self.application_count_label = QLabel("Applications: —")
+        self.startup_status_label = QLabel("Start with Windows: —")
         overview.addWidget(self.state_indicator)
         overview.addWidget(self.monitor_count_label)
         overview.addWidget(self.application_count_label)
+        overview.addWidget(self.startup_status_label)
         overview.addStretch()
         layout.addLayout(overview)
 
@@ -181,10 +193,19 @@ class JarvisDashboard(QMainWindow):
                 application_count = len(self._assistant.registry.load_all())
             self.monitor_count_label.setText(f"Monitors: {monitor_count}")
             self.application_count_label.setText(f"Applications: {application_count}")
+            try:
+                from system.startup_manager import StartupManager
+                is_startup = StartupManager().is_enabled()
+                self.startup_status_label.setText(
+                    f"Start with Windows: {'Enabled' if is_startup else 'Disabled'}"
+                )
+            except Exception:
+                self.startup_status_label.setText("Start with Windows: Disabled")
         except Exception as error:
             logger.error("Dashboard counts could not be updated (%s).", type(error).__name__)
             self.monitor_count_label.setText("Monitors: unavailable")
             self.application_count_label.setText("Applications: unavailable")
+            self.startup_status_label.setText("Start with Windows: unavailable")
 
     def _set_state(self, state: AssistantState) -> None:
         colors = {
@@ -201,3 +222,28 @@ class JarvisDashboard(QMainWindow):
 
     def _append_activity(self, success: bool, message: str) -> None:
         self.activity_log.appendPlainText(f"{'✓' if success else '!'} {message}")
+
+    def _start_voice_services(self) -> None:
+        """Initialize and start the voice interaction wake listener safely."""
+        try:
+            if self._voice_interaction is None:
+                from voice.interaction import VoiceInteraction
+                self._voice_interaction = VoiceInteraction(self._assistant)
+
+            self._voice_interaction.start()
+            self._append_activity(True, "Voice listener active. Say 'hello jarvis' to begin.")
+            logger.info("Voice wake listener started successfully.")
+        except Exception as exc:
+            logger.warning("Voice service initialization failed: %s", exc)
+            self._voice_interaction = None
+            self._append_activity(False, f"Voice listener unavailable: {exc}")
+
+    def closeEvent(self, event: Any) -> None:
+        """Ensure background voice threads are stopped cleanly when dashboard closes."""
+        if self._voice_interaction is not None:
+            try:
+                self._voice_interaction.stop()
+            except Exception as exc:
+                logger.debug("Error stopping voice interaction: %s", exc)
+            self._voice_interaction = None
+        super().closeEvent(event)

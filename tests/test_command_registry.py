@@ -509,5 +509,25 @@ class Phase5C1CommandRegistryTests(unittest.TestCase):
                 self.assertIn(expected, phrases)
 
 
+class Phase5C2CommandRegistryTests(unittest.TestCase):
+    """Tests for Phase 5C-2 discovery hardening command matching."""
+
+    def setUp(self) -> None:
+        self.registry = get_default_command_registry()
+
+    def test_56_what_is_active_matches_get_active_window(self) -> None:
+        intent = self.registry.match("what is active")
+        self.assertIsNotNone(intent)
+        self.assertEqual(intent.name, "get_active_window")
+
+    def test_57_open_windows_patterns(self) -> None:
+        for phrase in ("list open windows", "show open windows", "what windows are open"):
+            with self.subTest(phrase=phrase):
+                intent = self.registry.match(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.name, "list_open_windows")
+
+
+
 
 

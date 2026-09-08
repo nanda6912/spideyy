@@ -183,6 +183,46 @@ class CommandRouter:
                 return self._power_service.sleep_computer()
             elif action == "close_application":
                 if pending.hwnd is not None:
+                    is_valid_fn = getattr(self._window_manager, "is_valid_window", None)
+                    if callable(is_valid_fn):
+                        try:
+                            valid_res = is_valid_fn(pending.hwnd)
+                            if isinstance(valid_res, bool) and not valid_res:
+                                return CommandResult.failure(
+                                    "stale_window",
+                                    f"The {pending.target or 'application'} window is no longer available.",
+                                    hwnd=pending.hwnd,
+                                )
+                        except Exception:
+                            pass
+
+                    get_info_fn = getattr(self._window_manager, "get_window_info", None)
+                    if callable(get_info_fn):
+                        try:
+                            win_info = get_info_fn(pending.hwnd)
+                            if win_info is None:
+                                return CommandResult.failure(
+                                    "stale_window",
+                                    f"The {pending.target or 'application'} window is no longer available.",
+                                    hwnd=pending.hwnd,
+                                )
+                            if isinstance(win_info, WindowInfo) and pending.target:
+                                app = self._registry.match(pending.target)
+                                candidates = {pending.target.casefold(), *(a.casefold() for a in (app.aliases if app else ()))}
+                                if app:
+                                    candidates.add(app.name.casefold())
+                                win_title = (win_info.title or "").casefold()
+                                win_proc = (win_info.process_name or "").casefold()
+                                matches_target = any(c in win_title or c in win_proc or (app and app.executable_path and app.executable_path.name.casefold() == win_proc) for c in candidates)
+                                if not matches_target:
+                                    return CommandResult.failure(
+                                        "stale_window",
+                                        f"The window no longer corresponds to {pending.target}.",
+                                        hwnd=pending.hwnd,
+                                    )
+                        except Exception:
+                            pass
+
                     res = self._window_manager.close_window(pending.hwnd)
                     if res.success:
                         display_name = pending.target or "Application"
@@ -195,6 +235,18 @@ class CommandRouter:
                 return CommandResult.failure("window_close_failed", "I couldn't close that window.")
             elif action == "close_active_window":
                 if pending.hwnd is not None:
+                    is_valid_fn = getattr(self._window_manager, "is_valid_window", None)
+                    if callable(is_valid_fn):
+                        try:
+                            valid_res = is_valid_fn(pending.hwnd)
+                            if isinstance(valid_res, bool) and not valid_res:
+                                return CommandResult.failure(
+                                    "stale_window",
+                                    "The active window is no longer available.",
+                                    hwnd=pending.hwnd,
+                                )
+                        except Exception:
+                            pass
                     res = self._window_manager.close_window(pending.hwnd)
                     if res.success:
                         return CommandResult.ok(
@@ -243,7 +295,10 @@ class CommandRouter:
                 )
             return self._desktop_context_service.is_application_running(intent.target)
 
-        if intent.name in {"list_open_applications", "list_open_windows"}:
+        if intent.name == "list_open_windows":
+            return self._desktop_context_service.get_open_windows()
+
+        if intent.name == "list_open_applications":
             return self._desktop_context_service.get_open_applications()
 
         if intent.name in {"locate_application", "get_application_monitor"}:
@@ -274,13 +329,21 @@ class CommandRouter:
                     "application_not_found",
                     "I couldn't find that application in the application registry.",
                 )
-            window = self._find_window_for_application(app, intent.target)
-            if window is None:
+            windows = self._find_windows_for_application(app, intent.target)
+            if not windows:
                 return CommandResult.failure(
                     "window_not_found",
                     f"I couldn't find a visible {app.name} window.",
                     application=app.name,
                 )
+            if len(windows) > 1:
+                return CommandResult.failure(
+                    "multiple_windows_found",
+                    f"Multiple windows found for {app.name}. Please close the specific window directly or use 'close this window'.",
+                    application=app.name,
+                    window_count=len(windows),
+                )
+            window = windows[0]
             self._confirmation_manager.create(
                 "close_application",
                 description=f"close the {app.name} window",
@@ -417,6 +480,32 @@ class CommandRouter:
             )
         return window
 
+    def _find_windows_for_application(
+        self, application: DiscoveredApplication, original_query: str
+    ) -> list[WindowInfo]:
+        seen_handles: set[int] = set()
+        windows: list[WindowInfo] = []
+        candidates = (application.name, *application.aliases, original_query)
+        find_fn = getattr(self._window_manager, "find_windows", None)
+        found_via_multi = False
+        if callable(find_fn):
+            try:
+                for candidate in candidates:
+                    res = find_fn(candidate)
+                    if isinstance(res, (list, tuple)):
+                        found_via_multi = True
+                        for w in res:
+                            if getattr(w, "handle", None) is not None and w.handle not in seen_handles:
+                                seen_handles.add(w.handle)
+                                windows.append(w)
+            except Exception:
+                pass
+        if not found_via_multi:
+            single = self._find_window_for_application(application, original_query)
+            if single is not None and getattr(single, "handle", None) is not None:
+                windows.append(single)
+        return windows
+
     def _find_window_for_application(
         self, application: DiscoveredApplication, original_query: str
     ) -> WindowInfo | None:
@@ -435,7 +524,8 @@ class CommandRouter:
         return (
             "You can open applications, show monitors, maximize, minimize, restore, "
             "or move an application window to a monitor. "
-            "You can also ask: what window is active, list open windows, is chrome open, "
-            "which monitor is chrome on, focus chrome, close chrome, close this window, "
+            "You can also ask: what is active, what window is active, list open windows, "
+            "what applications are open, is chrome open, which monitor is chrome on, "
+            "focus chrome, close chrome, close this window, "
             "maximize this window, minimize this window, restore this window, or move this window to monitor 2."
         )

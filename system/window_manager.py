@@ -71,11 +71,11 @@ class WindowManager:
             logger.error("Window enumeration failed (%s).", type(error).__name__)
         return sorted(windows, key=lambda window: (window.title.casefold(), window.handle))
 
-    def find_window(self, application_or_title: str) -> WindowInfo | None:
-        """Find a visible window by title or process name using deterministic matching."""
+    def find_windows(self, application_or_title: str) -> list[WindowInfo]:
+        """Find visible windows matching title or process name, sorted deterministically."""
         query = application_or_title.casefold().strip()
         if not query:
-            return None
+            return []
         exact_matches: list[WindowInfo] = []
         partial_matches: list[WindowInfo] = []
         for window in self.get_windows():
@@ -86,6 +86,11 @@ class WindowManager:
             elif query in title or query in process_name:
                 partial_matches.append(window)
         matches = exact_matches or partial_matches
+        return sorted(matches, key=lambda window: (window.title.casefold(), window.handle))
+
+    def find_window(self, application_or_title: str) -> WindowInfo | None:
+        """Find a visible window by title or process name using deterministic matching."""
+        matches = self.find_windows(application_or_title)
         return matches[0] if matches else None
 
     def get_active_window(self) -> WindowInfo | None:
@@ -150,7 +155,15 @@ class WindowManager:
         return CommandResult.ok("Window activated.", handle=handle)
 
     def focus_window(self, window: WindowReference) -> CommandResult:
-        """Bring a window to the foreground and give it keyboard focus."""
+        """Bring a window to the foreground and give it keyboard focus safely."""
+        handle = self._valid_handle(window)
+        if handle is None:
+            return self._missing_window_result()
+        try:
+            if win32gui.GetForegroundWindow() == handle and not win32gui.IsIconic(handle):
+                return CommandResult.ok("Window is already focused.", handle=handle)
+        except Exception:
+            pass
         return self.activate_window(window)
 
     def close_window(self, window: WindowReference) -> CommandResult:
@@ -295,6 +308,32 @@ class WindowManager:
         if not isinstance(handle, int) or handle <= 0 or not win32gui.IsWindow(handle):
             return None
         return handle
+
+    def is_valid_window(self, window: WindowReference) -> bool:
+        """Return whether *window* references an existing, valid desktop window."""
+        return self._valid_handle(window) is not None
+
+    def is_minimized(self, window: WindowReference) -> bool:
+        """Return whether *window* is currently iconic (minimized)."""
+        handle = self._valid_handle(window)
+        if handle is None:
+            return False
+        try:
+            return bool(win32gui.IsIconic(handle))
+        except Exception:
+            return False
+
+    def get_window_info(self, window: WindowReference) -> WindowInfo | None:
+        """Return fresh WindowInfo for a window reference, or None if invalid/disappeared."""
+        handle = self._valid_handle(window)
+        if handle is None:
+            return None
+        title = ""
+        try:
+            title = win32gui.GetWindowText(handle).strip()
+        except Exception:
+            pass
+        return self._window_info(handle, title or "(unknown)")
 
     @staticmethod
     def _missing_window_result() -> CommandResult:

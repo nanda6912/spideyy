@@ -539,4 +539,107 @@ class Phase5C1CommandRouterTests(unittest.TestCase):
         self.windows.close_window.assert_not_called()
 
 
+class Phase5C2CommandRouterTests(unittest.TestCase):
+    """Phase 5C-2 router tests for discovery hardening, multi-window rejection, and stale HWND."""
+
+    def setUp(self) -> None:
+        self.chrome_app = DiscoveredApplication.create(
+            "Google Chrome", Path("chrome.exe"), source="test"
+        )
+        self.registry = Mock()
+        self.registry.match.return_value = self.chrome_app
+        self.launcher = Mock()
+        self.monitors = Mock()
+        self.monitors.monitor_count.return_value = 2
+
+        self.chrome_win1 = WindowInfo(100, "Google Chrome - Tab 1", 1234, "chrome.exe", 0, 0, 800, 600)
+        self.chrome_win2 = WindowInfo(101, "Google Chrome - Tab 2", 1234, "chrome.exe", 0, 0, 800, 600)
+
+        self.windows = Mock()
+        self.windows.find_window.return_value = self.chrome_win1
+        self.windows.find_windows.return_value = [self.chrome_win1]
+        self.windows.get_active_window.return_value = self.chrome_win1
+        self.windows.is_valid_window.return_value = True
+        self.windows.get_window_info.return_value = self.chrome_win1
+        self.windows.close_window.return_value = CommandResult.ok("Window close requested.")
+
+        self.state = Mock()
+        self.context_service = Mock()
+        self.context_service.get_open_windows.return_value = CommandResult.ok("Open windows: Chrome.")
+        self.context_service.get_open_applications.return_value = CommandResult.ok("Open applications: Chrome.")
+
+        self.confirmation_manager = ConfirmationManager(
+            default_timeout=10.0,
+            time_provider=lambda: 1000.0,
+        )
+
+        self.router = CommandRouter(
+            self.registry,
+            self.launcher,
+            self.monitors,
+            self.windows,
+            self.state,
+            desktop_context_service=self.context_service,
+            confirmation_manager=self.confirmation_manager,
+        )
+
+    def test_list_open_windows_dispatches_to_get_open_windows(self) -> None:
+        res = self.router.route("list open windows")
+        self.assertTrue(res.success)
+        self.context_service.get_open_windows.assert_called_once()
+        self.context_service.get_open_applications.assert_not_called()
+
+    def test_close_application_multiple_windows_rejected_without_confirmation(self) -> None:
+        self.windows.find_windows.return_value = [self.chrome_win1, self.chrome_win2]
+        res = self.router.route("close chrome")
+        self.assertFalse(res.success)
+        self.assertEqual(res.error_code, "multiple_windows_found")
+        self.assertIn("Multiple windows found", res.message)
+        self.assertIsNone(self.confirmation_manager.pending)
+        self.windows.close_window.assert_not_called()
+
+    def test_stale_hwnd_rejection_on_close_application(self) -> None:
+        # 1. Request close chrome -> creates confirmation for HWND 100
+        res = self.router.route("close chrome")
+        self.assertTrue(res.success)
+        self.assertIsNotNone(self.confirmation_manager.pending)
+
+        # 2. Window disappears before user confirms
+        self.windows.is_valid_window.return_value = False
+        res_confirm = self.router.route("yes")
+        self.assertFalse(res_confirm.success)
+        self.assertEqual(res_confirm.error_code, "stale_window")
+        self.assertIn("no longer available", res_confirm.message)
+        self.windows.close_window.assert_not_called()
+
+    def test_stale_hwnd_target_mismatch_on_close_application(self) -> None:
+        # 1. Request close chrome -> creates confirmation for HWND 100
+        res = self.router.route("close chrome")
+        self.assertTrue(res.success)
+
+        # 2. HWND was recycled to Notepad before user confirms
+        notepad_win = WindowInfo(100, "Untitled - Notepad", 9999, "notepad.exe", 0, 0, 500, 500)
+        self.windows.get_window_info.return_value = notepad_win
+        res_confirm = self.router.route("yes")
+        self.assertFalse(res_confirm.success)
+        self.assertEqual(res_confirm.error_code, "stale_window")
+        self.assertIn("no longer corresponds", res_confirm.message)
+        self.windows.close_window.assert_not_called()
+
+    def test_stale_hwnd_rejection_on_close_active_window(self) -> None:
+        # 1. Request close this window -> creates confirmation for HWND 100
+        res = self.router.route("close this window")
+        self.assertTrue(res.success)
+        self.assertIsNotNone(self.confirmation_manager.pending)
+
+        # 2. Window disappears before user confirms
+        self.windows.is_valid_window.return_value = False
+        res_confirm = self.router.route("yes")
+        self.assertFalse(res_confirm.success)
+        self.assertEqual(res_confirm.error_code, "stale_window")
+        self.assertIn("no longer available", res_confirm.message)
+        self.windows.close_window.assert_not_called()
+
+
+
 

@@ -32,6 +32,13 @@ PHRASES = (
     "bring chrome to front",
     "close chrome",
     "close this window",
+    "list open windows",
+    "show open windows",
+    "what windows are open",
+    "what is active",
+    "what window is active",
+    "which application is active",
+    "which monitor is chrome on",
 )
 
 

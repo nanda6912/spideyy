@@ -207,6 +207,65 @@ class DesktopContextService:
                 "I couldn't list open applications.",
             )
 
+    def get_open_windows(self) -> CommandResult:
+        """Return a structured list of open desktop windows with title, handle, and monitor."""
+        try:
+            windows = self._window_manager.list_open_windows()
+            if not windows:
+                return CommandResult.ok(
+                    "I couldn't find any open windows.",
+                    window_count=0,
+                    windows=[],
+                )
+
+            details: list[dict[str, Any]] = []
+            summaries: list[str] = []
+
+            for window in windows:
+                app = None
+                if window.process_name:
+                    app = self._registry.match(window.process_name)
+                if app is None and window.title:
+                    app = self._registry.match(window.title)
+
+                app_name = app.name if app is not None else (window.process_name or "Unknown")
+                monitor = self._window_manager.get_window_monitor(window)
+                monitor_idx = monitor.index if monitor is not None else None
+
+                details.append({
+                    "application": app_name,
+                    "title": window.title,
+                    "process_name": window.process_name,
+                    "hwnd": window.handle,
+                    "monitor_index": monitor_idx,
+                })
+
+                if monitor_idx is not None:
+                    summaries.append(f"{window.title} on monitor {monitor_idx}")
+                else:
+                    summaries.append(window.title)
+
+            if len(summaries) == 1:
+                summary = summaries[0]
+            elif len(summaries) == 2:
+                summary = f"{summaries[0]} and {summaries[1]}"
+            elif len(summaries) <= 4:
+                summary = f"{', '.join(summaries[:-1])}, and {summaries[-1]}"
+            else:
+                summary = f"{', '.join(summaries[:3])}, and {len(summaries) - 3} more"
+
+            return CommandResult.ok(
+                f"Open windows: {summary}.",
+                window_count=len(details),
+                windows=details,
+            )
+        except Exception as error:
+            logger.error("get_open_windows failed (%s).", type(error).__name__)
+            return CommandResult.failure(
+                "list_windows_failed",
+                "I couldn't list open windows.",
+            )
+
     def locate_application(self, application_query: str) -> CommandResult:
         """Locate an application's visible window and monitor placement."""
         try:
@@ -286,30 +345,71 @@ class DesktopContextService:
                     "I couldn't find that application in the application registry.",
                 )
 
-            # Prefer currently active foreground window if it already matches
+            # Gather all matching windows deterministically
+            all_matching: list[WindowInfo] = []
+            seen_handles: set[int] = set()
+            candidates = (app.name, *app.aliases, application_query)
+            find_fn = getattr(self._window_manager, "find_windows", None)
+            found_via_multi = False
+            if callable(find_fn):
+                try:
+                    for candidate in candidates:
+                        res = find_fn(candidate)
+                        if isinstance(res, (list, tuple)):
+                            found_via_multi = True
+                            for w in res:
+                                if getattr(w, "handle", None) is not None and w.handle not in seen_handles:
+                                    seen_handles.add(w.handle)
+                                    all_matching.append(w)
+                except Exception:
+                    pass
+
+            if not found_via_multi:
+                for candidate in candidates:
+                    w = self._window_manager.find_window(candidate)
+                    if w is not None and getattr(w, "handle", None) is not None and w.handle not in seen_handles:
+                        seen_handles.add(w.handle)
+                        all_matching.append(w)
+
+            # Selection rules:
+            # 1. Prefer currently active foreground window if it matches
             active_window = self._window_manager.get_active_window()
-            matching_active: WindowInfo | None = None
+            selected_window: WindowInfo | None = None
             if active_window is not None:
-                candidates = {app.name.casefold(), application_query.casefold(), *(a.casefold() for a in app.aliases)}
-                win_title = active_window.title.casefold()
-                win_proc = (active_window.process_name or "").casefold()
-                if any(c in win_title or c in win_proc or win_proc == f"{c}.exe" for c in candidates):
-                    matching_active = active_window
+                if any(getattr(w, "handle", None) == getattr(active_window, "handle", None) for w in all_matching):
+                    selected_window = active_window
+                else:
+                    win_title = getattr(active_window, "title", "").casefold()
+                    win_proc = (getattr(active_window, "process_name", "") or "").casefold()
+                    cand_set = {c.casefold() for c in candidates}
+                    if any(c in win_title or c in win_proc or win_proc == f"{c}.exe" for c in cand_set):
+                        selected_window = active_window
 
-            window: WindowInfo | None = matching_active
-            if window is None:
-                for candidate in (app.name, *app.aliases, application_query):
-                    window = self._window_manager.find_window(candidate)
-                    if window is not None:
-                        break
+            # 2. Prefer a visible, non-minimized matching window
+            if selected_window is None and all_matching:
+                is_min = getattr(self._window_manager, "is_minimized", None)
+                if callable(is_min):
+                    try:
+                        non_minimized = [
+                            w for w in all_matching
+                            if isinstance(is_min(w.handle), bool) and not is_min(w.handle)
+                        ]
+                        if non_minimized:
+                            selected_window = non_minimized[0]
+                    except Exception:
+                        pass
 
-            if window is not None:
-                res = self._window_manager.focus_window(window)
+            # 3. Otherwise, use deterministic stable ordering
+            if selected_window is None and all_matching:
+                selected_window = all_matching[0]
+
+            if selected_window is not None:
+                res = self._window_manager.focus_window(selected_window)
                 if res.success:
                     return CommandResult.ok(
                         f"Focusing {app.name}.",
                         application=app.name,
-                        hwnd=window.handle,
+                        hwnd=selected_window.handle,
                     )
                 return res
 

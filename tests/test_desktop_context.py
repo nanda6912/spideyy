@@ -251,6 +251,42 @@ class DesktopContextServiceTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.error_code, "window_activate_failed")
 
+    # 22. Get open windows with structured details
+    def test_22_get_open_windows_with_details(self) -> None:
+        result = self.service.get_open_windows()
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["window_count"], 2)
+        windows = result.data["windows"]
+        self.assertEqual(len(windows), 2)
+        self.assertEqual(windows[0]["application"], "Google Chrome")
+        self.assertEqual(windows[0]["hwnd"], 100)
+        self.assertEqual(windows[0]["monitor_index"], 1)
+        self.assertIn("Google Chrome - New Tab on monitor 1", result.message)
+
+    # 23. Get open windows when none open
+    def test_23_get_open_windows_empty(self) -> None:
+        self.window_manager.list_open_windows.return_value = []
+        result = self.service.get_open_windows()
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["window_count"], 0)
+        self.assertEqual(result.data["windows"], [])
+        self.assertIn("couldn't find any open windows", result.message)
+
+    # 24. Focus application prefers non-minimized matching window
+    def test_24_focus_application_prefers_non_minimized(self) -> None:
+        self.window_manager.get_active_window.return_value = None
+        minimized_win = WindowInfo(101, "Google Chrome - Minimized", 1234, "chrome.exe", 0, 0, 800, 600)
+        normal_win = WindowInfo(102, "Google Chrome - Visible", 1234, "chrome.exe", 0, 0, 800, 600)
+        self.window_manager.find_windows.return_value = [minimized_win, normal_win]
+        self.window_manager.is_minimized.side_effect = lambda hwnd: hwnd == 101
+        self.window_manager.focus_window.return_value = CommandResult.ok("Focusing Google Chrome.")
+
+        result = self.service.focus_application("chrome")
+        self.assertTrue(result.success)
+        # Should have chosen normal_win (102) over minimized_win (101)
+        self.window_manager.focus_window.assert_called_with(normal_win)
+
 
 if __name__ == "__main__":
     unittest.main()
+

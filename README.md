@@ -82,6 +82,22 @@ or pass an explicit `model_path` to the relevant voice service.
 The dashboard initializes the local application registry at startup. Voice
 interaction is exercised through the dedicated manual interaction script.
 
+## Windows Login Startup
+
+SPIDEYY can start once for the current Windows user after sign-in. The setting
+uses `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, so it does not
+require administrator privileges. A named Windows mutex prevents duplicate
+desktop and microphone instances.
+
+```powershell
+.\.venv313\Scripts\python.exe -m app.main --startup-enable
+.\.venv313\Scripts\python.exe -m app.main --startup-status
+.\.venv313\Scripts\python.exe -m app.main --startup-disable
+```
+
+These commands only update or query the startup setting; they do not start Qt,
+Vosk, or the microphone. The dashboard also shows the current startup status.
+
 ## Running Tests
 
 ```powershell
